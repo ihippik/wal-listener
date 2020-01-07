@@ -1,0 +1,25 @@
+listener:
+  slotName: myslot
+  ackTimeout: 10s
+  refreshConnection: 30s
+  heartbeatInterval: 10s
+logger:
+  caller: false
+  level: debug
+  humanReadable: true
+database:
+  host: localhost
+  port: 5432
+  name: test
+  user: postgres
+  password: postgres
+  filter:
+    tables:
+      my_table:
+        - insert
+        - update
+nats:
+  address: localhost:4222
+  clusterID: test-cluster
+  clientID: wal-listener
+  topicPrefix: "pre"
