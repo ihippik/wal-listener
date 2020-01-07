@@ -1,5 +1,13 @@
 # WAL-Listener
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Build Status](https://travis-ci.com/ihippik/wal-listener.svg?branch=master)](https://travis-ci.com/ihippik/wal-listener)
+![Codecov](https://img.shields.io/codecov/c/github/ihippik/wal-listener)
+
+A service that helps implement the microservice design pattern - **event publication**.
+To maintain the consistency of data in the system, we will use **transactional messaging** - 
+publishing events in a single transaction with a domain model change.
+
 Inspired after watching https://github.com/hasura/pgdeltastream
 
 The service allows you to subscribe to changes in the PostgreSQL database using its logical decoding capability 
