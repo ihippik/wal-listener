@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"github.com/jackc/pgx"
@@ -60,7 +59,7 @@ func main() {
 	}
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 }
 
@@ -102,9 +101,11 @@ func initPgxConnections(cfg config.DatabaseCfg) (*pgx.Conn, *pgx.ReplicationConn
 	return pgConn, rConnection, nil
 }
 
+// logger log levels.
 const (
-	WarningLevel = "warning"
-	ErrorLevel   = "error"
+	warningLoggerLevel = "warning"
+	errorLoggerLevel   = "error"
+	fatalLoggerLevel   = "fatal"
 )
 
 // initLogger init logrus preferences.
@@ -115,10 +116,12 @@ func initLogger(cfg config.LoggerCfg) {
 	}
 	var level logrus.Level
 	switch cfg.Level {
-	case WarningLevel:
+	case warningLoggerLevel:
 		level = logrus.WarnLevel
-	case ErrorLevel:
+	case errorLoggerLevel:
 		level = logrus.ErrorLevel
+	case fatalLoggerLevel:
+		level = logrus.FatalLevel
 	default:
 		level = logrus.DebugLevel
 	}
