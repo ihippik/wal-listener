@@ -17,20 +17,22 @@ const NotValidMessage = "not valid WAL message"
 // WalEvent incoming message structure.
 //easyjson:json
 type WalEvent struct {
-	NextLSN string `json:"nextlsn"`
-	Change  []struct {
-		Kind         string        `json:"kind"`
-		Schema       string        `json:"schema"`
-		Table        string        `json:"table"`
-		ColumnNames  []string      `json:"columnnames"`
-		ColumnTypes  []string      `json:"columntypes"`
-		ColumnValues []interface{} `json:"columnvalues"`
-		OldKeys      struct {
-			KeyNames  []string      `json:"keynames"`
-			KeyTypes  []string      `json:"keytypes"`
-			KeyValues []interface{} `json:"keyvalues"`
-		} `json:"oldkeys"`
-	} `json:"change"`
+	NextLSN string       `json:"nextlsn"`
+	Change  []ChangeItem `json:"change"`
+}
+
+type ChangeItem struct {
+	Kind         string        `json:"kind"`
+	Schema       string        `json:"schema"`
+	Table        string        `json:"table"`
+	ColumnNames  []string      `json:"columnnames"`
+	ColumnTypes  []string      `json:"columntypes"`
+	ColumnValues []interface{} `json:"columnvalues"`
+	OldKeys      struct {
+		KeyNames  []string      `json:"keynames"`
+		KeyTypes  []string      `json:"keytypes"`
+		KeyValues []interface{} `json:"keyvalues"`
+	} `json:"oldkeys"`
 }
 
 // Validate simple message checking for integrity.

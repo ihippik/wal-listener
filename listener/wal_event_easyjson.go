@@ -46,52 +46,16 @@ func easyjson39bd694bDecodeGithubComIhippikWalListenerListener(in *jlexer.Lexer,
 				in.Delim('[')
 				if out.Change == nil {
 					if !in.IsDelim(']') {
-						out.Change = make([]struct {
-							Kind         string        `json:"kind"`
-							Schema       string        `json:"schema"`
-							Table        string        `json:"table"`
-							ColumnNames  []string      `json:"columnnames"`
-							ColumnTypes  []string      `json:"columntypes"`
-							ColumnValues []interface{} `json:"columnvalues"`
-							OldKeys      struct {
-								KeyNames  []string      `json:"keynames"`
-								KeyTypes  []string      `json:"keytypes"`
-								KeyValues []interface{} `json:"keyvalues"`
-							} `json:"oldkeys"`
-						}, 0, 1)
+						out.Change = make([]ChangeItem, 0, 1)
 					} else {
-						out.Change = []struct {
-							Kind         string        `json:"kind"`
-							Schema       string        `json:"schema"`
-							Table        string        `json:"table"`
-							ColumnNames  []string      `json:"columnnames"`
-							ColumnTypes  []string      `json:"columntypes"`
-							ColumnValues []interface{} `json:"columnvalues"`
-							OldKeys      struct {
-								KeyNames  []string      `json:"keynames"`
-								KeyTypes  []string      `json:"keytypes"`
-								KeyValues []interface{} `json:"keyvalues"`
-							} `json:"oldkeys"`
-						}{}
+						out.Change = []ChangeItem{}
 					}
 				} else {
 					out.Change = (out.Change)[:0]
 				}
 				for !in.IsDelim(']') {
-					var v1 struct {
-						Kind         string        `json:"kind"`
-						Schema       string        `json:"schema"`
-						Table        string        `json:"table"`
-						ColumnNames  []string      `json:"columnnames"`
-						ColumnTypes  []string      `json:"columntypes"`
-						ColumnValues []interface{} `json:"columnvalues"`
-						OldKeys      struct {
-							KeyNames  []string      `json:"keynames"`
-							KeyTypes  []string      `json:"keytypes"`
-							KeyValues []interface{} `json:"keyvalues"`
-						} `json:"oldkeys"`
-					}
-					easyjson39bd694bDecode(in, &v1)
+					var v1 ChangeItem
+					easyjson39bd694bDecodeGithubComIhippikWalListenerListener1(in, &v1)
 					out.Change = append(out.Change, v1)
 					in.WantComma()
 				}
@@ -127,7 +91,7 @@ func easyjson39bd694bEncodeGithubComIhippikWalListenerListener(out *jwriter.Writ
 				if v2 > 0 {
 					out.RawByte(',')
 				}
-				easyjson39bd694bEncode(out, v3)
+				easyjson39bd694bEncodeGithubComIhippikWalListenerListener1(out, v3)
 			}
 			out.RawByte(']')
 		}
@@ -158,19 +122,7 @@ func (v *WalEvent) UnmarshalJSON(data []byte) error {
 func (v *WalEvent) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson39bd694bDecodeGithubComIhippikWalListenerListener(l, v)
 }
-func easyjson39bd694bDecode(in *jlexer.Lexer, out *struct {
-	Kind         string        `json:"kind"`
-	Schema       string        `json:"schema"`
-	Table        string        `json:"table"`
-	ColumnNames  []string      `json:"columnnames"`
-	ColumnTypes  []string      `json:"columntypes"`
-	ColumnValues []interface{} `json:"columnvalues"`
-	OldKeys      struct {
-		KeyNames  []string      `json:"keynames"`
-		KeyTypes  []string      `json:"keytypes"`
-		KeyValues []interface{} `json:"keyvalues"`
-	} `json:"oldkeys"`
-}) {
+func easyjson39bd694bDecodeGithubComIhippikWalListenerListener1(in *jlexer.Lexer, out *ChangeItem) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -271,7 +223,7 @@ func easyjson39bd694bDecode(in *jlexer.Lexer, out *struct {
 				in.Delim(']')
 			}
 		case "oldkeys":
-			easyjson39bd694bDecode1(in, &out.OldKeys)
+			easyjson39bd694bDecode(in, &out.OldKeys)
 		default:
 			in.SkipRecursive()
 		}
@@ -282,19 +234,7 @@ func easyjson39bd694bDecode(in *jlexer.Lexer, out *struct {
 		in.Consumed()
 	}
 }
-func easyjson39bd694bEncode(out *jwriter.Writer, in struct {
-	Kind         string        `json:"kind"`
-	Schema       string        `json:"schema"`
-	Table        string        `json:"table"`
-	ColumnNames  []string      `json:"columnnames"`
-	ColumnTypes  []string      `json:"columntypes"`
-	ColumnValues []interface{} `json:"columnvalues"`
-	OldKeys      struct {
-		KeyNames  []string      `json:"keynames"`
-		KeyTypes  []string      `json:"keytypes"`
-		KeyValues []interface{} `json:"keyvalues"`
-	} `json:"oldkeys"`
-}) {
+func easyjson39bd694bEncodeGithubComIhippikWalListenerListener1(out *jwriter.Writer, in ChangeItem) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -370,11 +310,11 @@ func easyjson39bd694bEncode(out *jwriter.Writer, in struct {
 	{
 		const prefix string = ",\"oldkeys\":"
 		out.RawString(prefix)
-		easyjson39bd694bEncode1(out, in.OldKeys)
+		easyjson39bd694bEncode(out, in.OldKeys)
 	}
 	out.RawByte('}')
 }
-func easyjson39bd694bDecode1(in *jlexer.Lexer, out *struct {
+func easyjson39bd694bDecode(in *jlexer.Lexer, out *struct {
 	KeyNames  []string      `json:"keynames"`
 	KeyTypes  []string      `json:"keytypes"`
 	KeyValues []interface{} `json:"keyvalues"`
@@ -482,7 +422,7 @@ func easyjson39bd694bDecode1(in *jlexer.Lexer, out *struct {
 		in.Consumed()
 	}
 }
-func easyjson39bd694bEncode1(out *jwriter.Writer, in struct {
+func easyjson39bd694bEncode(out *jwriter.Writer, in struct {
 	KeyNames  []string      `json:"keynames"`
 	KeyTypes  []string      `json:"keytypes"`
 	KeyValues []interface{} `json:"keyvalues"`
