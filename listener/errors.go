@@ -29,4 +29,6 @@ func newListenerError(caller string, err error) *serviceErr {
 	return &serviceErr{Caller: caller, Err: err}
 }
 
-func (e *serviceErr) Error() string { return e.Caller + ": " + e.Err.Error() }
+func (e *serviceErr) Error() string {
+	return e.Caller + ": " + e.Err.Error()
+}
