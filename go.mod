@@ -3,6 +3,7 @@ module github.com/ihippik/wal-listener
 go 1.13
 
 require (
+	bou.ke/monkey v1.0.2
 	github.com/asaskevich/govalidator v0.0.0-20190424111038-f61b66f89f4a
 	github.com/cockroachdb/apd v1.1.0 // indirect
 	github.com/gofrs/uuid v3.2.0+incompatible // indirect
