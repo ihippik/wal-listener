@@ -9,20 +9,22 @@ import (
 type Config struct {
 	Listener ListenerCfg
 	Database DatabaseCfg
-	Nats     struct {
-		Address     string
-		ClusterID   string
-		ClientID    string
-		TopicPrefix string
-	}
-	Logger LoggerCfg
+	Nats     NatsCfg
+	Logger   LoggerCfg
 }
 
 type ListenerCfg struct {
-	SlotName          string `valid:"required"`
+	SlotName          string        `valid:"required"`
 	AckTimeout        time.Duration `valid:"required"`
 	RefreshConnection time.Duration `valid:"required"`
 	HeartbeatInterval time.Duration `valid:"required"`
+}
+
+type NatsCfg struct {
+	Address     string `valid:"required"`
+	ClusterID   string `valid:"required"`
+	ClientID    string `valid:"required"`
+	TopicPrefix string `valid:"required"`
 }
 
 type LoggerCfg struct {
