@@ -3,6 +3,8 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Build Status](https://travis-ci.com/ihippik/wal-listener.svg?branch=master)](https://travis-ci.com/ihippik/wal-listener)
 ![Codecov](https://img.shields.io/codecov/c/github/ihippik/wal-listener)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/ihippik/wal-listener)
+![GitHub tag (latest SemVer)](https://img.shields.io/github/v/tag/ihippik/wal-listener)
 
 A service that helps implement the **Event-driven architecture**.
 To maintain the consistency of data in the system, we will use **transactional messaging** - 
@@ -33,9 +35,9 @@ Messages are published to Nats-Streaming at least once!
 
 ## Restrictions
 
-* DB Postgres must be configured for logical replication and wal2json extension installed.
+* DB Postgres must be configured for logical replication and `wal2json` extension installed  
 (use for test `docker run -it -p 5432:5432 debezium/postgres:11`)
-* Tables must have a primary key.
+* Tables must have a primary key
 * DDL, truncate and sequences are not replicated
 
 ### Filter configuration example
