@@ -262,3 +262,103 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestListener_AckWalMessage(t *testing.T) {
+	repl := new(replicatorMock)
+	type fields struct {
+		restartLSN uint64
+	}
+	type args struct {
+		restartLSNStr string
+	}
+
+	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
+		repl.On(
+			"SendStandbyStatus",
+			status,
+		).
+			Return(err).
+			Once()
+	}
+	wayback := time.Date(1974, time.May, 19, 1, 2, 3, 4, time.UTC)
+	patch := monkey.Patch(time.Now, func() time.Time { return wayback })
+	defer patch.Unpatch()
+
+	tests := []struct {
+		name    string
+		setup   func()
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "success",
+			setup: func() {
+				setSendStandbyStatus(
+					&pgx.StandbyStatus{
+						WalWritePosition: 24658872,
+						WalFlushPosition: 24658872,
+						WalApplyPosition: 24658872,
+						ClientTime:       18445935546232551617,
+						ReplyRequested:   0,
+					},
+					nil,
+				)
+			},
+			fields: fields{
+				restartLSN: 0,
+			},
+			args: args{
+				restartLSNStr: "0/17843B8",
+			},
+			wantErr: false,
+		},
+		{
+			name: "send status error",
+			setup: func() {
+				setSendStandbyStatus(
+					&pgx.StandbyStatus{
+						WalWritePosition: 24658872,
+						WalFlushPosition: 24658872,
+						WalApplyPosition: 24658872,
+						ClientTime:       18445935546232551617,
+						ReplyRequested:   0,
+					},
+					someErr,
+				)
+			},
+			fields: fields{
+				restartLSN: 0,
+			},
+			args: args{
+				restartLSNStr: "0/17843B8",
+			},
+			wantErr: true,
+		},
+		{
+			name:  "invalid lsn",
+			setup: func() {},
+			fields: fields{
+				restartLSN: 0,
+			},
+			args: args{
+				restartLSNStr: "invalid",
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup()
+			w := &Listener{
+				replicator: repl,
+				restartLSN: tt.fields.restartLSN,
+			}
+			if err := w.AckWalMessage(tt.args.restartLSNStr); (err != nil) != tt.wantErr {
+				t.Errorf("AckWalMessage() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			repl.AssertExpectations(t)
+		})
+	}
+}
