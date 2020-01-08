@@ -431,7 +431,7 @@ func TestListener_Stream(t *testing.T) {
 				)
 				setPublish(
 					"pre_user_service_users",
-					[]byte(`{"scheme":"user_service","table":"users","action":"insert","data":{"k1":"v1"}}`),
+					[]byte(`{"schema":"user_service","table":"users","action":"insert","data":{"k1":"v1"}}`),
 					nil,
 				)
 				setSendStandbyStatus(

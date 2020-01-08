@@ -19,7 +19,7 @@ func (n NatsPublisher) Close() error {
 // Event event structure for publishing to the NATS server.
 //easyjson:json
 type Event struct {
-	Scheme string                 `json:"scheme"`
+	Schema string                 `json:"schema"`
 	Table  string                 `json:"table"`
 	Action string                 `json:"action"`
 	Data   map[string]interface{} `json:"data"`
@@ -33,7 +33,7 @@ func NewNatsPublisher(conn stan.Conn) *NatsPublisher {
 	return &NatsPublisher{conn: conn}
 }
 
-// GetSubjectName creates subject name from the prefix, scheme and table name.
+// GetSubjectName creates subject name from the prefix, schema and table name.
 func (e Event) GetSubjectName(prefix string) string {
-	return fmt.Sprintf("%s%s_%s", prefix, e.Scheme, e.Table)
+	return fmt.Sprintf("%s%s_%s", prefix, e.Schema, e.Table)
 }

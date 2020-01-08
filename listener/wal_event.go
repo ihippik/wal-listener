@@ -64,7 +64,7 @@ func (w *WalEvent) CreateEventsWithFilter(tableMap map[string][]string) []Event 
 		}
 
 		event := Event{
-			Scheme: item.Schema,
+			Schema: item.Schema,
 			Table:  item.Table,
 			Action: item.Kind,
 			Data:   data,
@@ -77,7 +77,7 @@ func (w *WalEvent) CreateEventsWithFilter(tableMap map[string][]string) []Event 
 		} else {
 			logrus.WithFields(
 				logrus.Fields{
-					"scheme": item.Schema,
+					"schema": item.Schema,
 					"table":  item.Table,
 					"action": item.Kind,
 				}).

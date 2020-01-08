@@ -4,7 +4,7 @@ import "testing"
 
 func TestEvent_GetSubjectName(t *testing.T) {
 	type fields struct {
-		Scheme string
+		Schema string
 		Table  string
 		Action string
 		Data   map[string]interface{}
@@ -21,7 +21,7 @@ func TestEvent_GetSubjectName(t *testing.T) {
 		{
 			name: "success",
 			fields: fields{
-				Scheme: "public",
+				Schema: "public",
 				Table:  "users",
 				Action: "insert",
 				Data:   nil,
@@ -35,7 +35,7 @@ func TestEvent_GetSubjectName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := &Event{
-				Scheme: tt.fields.Scheme,
+				Schema: tt.fields.Schema,
 				Table:  tt.fields.Table,
 				Action: tt.fields.Action,
 				Data:   tt.fields.Data,
