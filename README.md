@@ -54,3 +54,11 @@ databases:
 ```
 This filter means that we only process events occurring with the `users` table, 
 and in particular `insert` and `update` data.
+
+### Docker
+
+You can start the container from the project folder (configuration file is required)
+
+```
+docker run -v $(pwd)/config.yml:/app/config.yml ihippik/wal-listener:master
+```
