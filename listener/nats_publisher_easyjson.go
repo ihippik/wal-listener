@@ -36,11 +36,11 @@ func easyjsonAd513449DecodeGithubComIhippikWalListenerListener(in *jlexer.Lexer,
 			continue
 		}
 		switch key {
-		case "TableName":
+		case "tableName":
 			out.TableName = string(in.String())
-		case "Action":
+		case "action":
 			out.Action = string(in.String())
-		case "Data":
+		case "data":
 			if in.IsNull() {
 				in.Skip()
 			} else {
@@ -81,17 +81,17 @@ func easyjsonAd513449EncodeGithubComIhippikWalListenerListener(out *jwriter.Writ
 	first := true
 	_ = first
 	{
-		const prefix string = ",\"TableName\":"
+		const prefix string = ",\"tableName\":"
 		out.RawString(prefix[1:])
 		out.String(string(in.TableName))
 	}
 	{
-		const prefix string = ",\"Action\":"
+		const prefix string = ",\"action\":"
 		out.RawString(prefix)
 		out.String(string(in.Action))
 	}
 	{
-		const prefix string = ",\"Data\":"
+		const prefix string = ",\"data\":"
 		out.RawString(prefix)
 		if in.Data == nil && (out.Flags&jwriter.NilMapAsEmpty) == 0 {
 			out.RawString(`null`)

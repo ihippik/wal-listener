@@ -165,6 +165,10 @@ func (w *Listener) Stream(ctx context.Context) {
 	go w.SendPeriodicHeartbeats(ctx)
 
 	for {
+		if ctx.Err() != nil {
+			w.errChannel <- newListenerError("read message", err)
+			break
+		}
 		message, err := w.replicator.WaitForReplicationMessage(ctx)
 		if err != nil {
 			w.errChannel <- newListenerError("WaitForReplicationMessage()", err)

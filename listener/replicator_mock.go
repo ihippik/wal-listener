@@ -20,11 +20,13 @@ func (r *replicatorMock) DropReplicationSlot(slotName string) (err error) {
 }
 
 func (r *replicatorMock) StartReplication(slotName string, startLsn uint64, timeline int64, pluginArguments ...string) (err error) {
-	panic("implement me")
+	args := r.Called(slotName, startLsn, timeline, pluginArguments)
+	return args.Error(0)
 }
 
-func (r *replicatorMock) WaitForReplicationMessage(ctx context.Context) (*pgx.ReplicationMessage, error) {
-	panic("implement me")
+func (r *replicatorMock) WaitForReplicationMessage(ctx context.Context) (mess *pgx.ReplicationMessage, err error) {
+	args := r.Called(ctx)
+	return args.Get(0).(*pgx.ReplicationMessage), args.Error(1)
 }
 
 func (r *replicatorMock) SendStandbyStatus(status *pgx.StandbyStatus) (err error) {

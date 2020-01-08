@@ -19,9 +19,9 @@ func (n NatsPublisher) Close() error {
 // Event event structure for publishing to the NATS server.
 //easyjson:json
 type Event struct {
-	TableName string
-	Action    string
-	Data      map[string]interface{}
+	TableName string                 `json:"tableName"`
+	Action    string                 `json:"action"`
+	Data      map[string]interface{} `json:"data"`
 }
 
 func (n NatsPublisher) Publish(subject string, msg []byte) error {
