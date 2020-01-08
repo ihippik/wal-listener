@@ -430,8 +430,8 @@ func TestListener_Stream(t *testing.T) {
 					pluginArgIncludeLSN,
 				)
 				setPublish(
-					"pre_users",
-					[]byte(`{"tableName":"users","action":"insert","data":{"k1":"v1"}}`),
+					"pre_user_service_users",
+					[]byte(`{"scheme":"user_service","table":"users","action":"insert","data":{"k1":"v1"}}`),
 					nil,
 				)
 				setSendStandbyStatus(
@@ -451,7 +451,7 @@ func TestListener_Stream(t *testing.T) {
 							WalStart:     0,
 							ServerWalEnd: 0,
 							ServerTime:   0,
-							WalData:      []byte(`{"nextlsn":"0/17843B8","change":[{"kind":"insert","table":"users","columnnames":["k1"],"columnvalues":["v1"]}]}`),
+							WalData:      []byte(`{"nextlsn":"0/17843B8","change":[{"kind":"insert","schema":"user_service","table":"users","columnnames":["k1"],"columnvalues":["v1"]}]}`),
 						},
 						ServerHeartbeat: &pgx.ServerHeartbeat{
 							ServerWalEnd:   0,
@@ -475,7 +475,7 @@ func TestListener_Stream(t *testing.T) {
 						},
 					},
 					Nats: config.NatsCfg{
-						TopicPrefix: "pre",
+						TopicPrefix: "pre_",
 					},
 				},
 				slotName:   "myslot",
@@ -507,7 +507,7 @@ func TestListener_Stream(t *testing.T) {
 							WalStart:     0,
 							ServerWalEnd: 0,
 							ServerTime:   0,
-							WalData:      []byte(`{"nextLsn":"0","change":[{"kind":"insert","table":"users","columnnames":["k1"],"columnvalues":["v1"]}]}`),
+							WalData:      []byte(`{"nextLsn":"0","change":[{"kind":"insert","schema":"user_service","table":"users","columnnames":["k1"],"columnvalues":["v1"]}]}`),
 						},
 						ServerHeartbeat: &pgx.ServerHeartbeat{
 							ServerWalEnd:   0,
@@ -531,7 +531,7 @@ func TestListener_Stream(t *testing.T) {
 						},
 					},
 					Nats: config.NatsCfg{
-						TopicPrefix: "pre",
+						TopicPrefix: "pre_",
 					},
 				},
 				slotName:   "myslot",

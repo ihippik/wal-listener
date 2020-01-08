@@ -103,9 +103,10 @@ func TestWalEvent_CreateEventsWithFilter(t *testing.T) {
 			},
 			want: []Event{
 				{
-					TableName: "users",
-					Action:    "insert",
-					Data:      map[string]interface{}{"first": "v1", "second": "v2"},
+					Scheme: "public",
+					Table:  "users",
+					Action: "insert",
+					Data:   map[string]interface{}{"first": "v1", "second": "v2"},
 				},
 			},
 		},
@@ -135,9 +136,10 @@ func TestWalEvent_CreateEventsWithFilter(t *testing.T) {
 			},
 			want: []Event{
 				{
-					TableName: "users",
-					Action:    "delete",
-					Data:      map[string]interface{}{"id": 1},
+					Scheme: "public",
+					Table:  "users",
+					Action: "delete",
+					Data:   map[string]interface{}{"id": 1},
 				},
 			},
 		},
@@ -170,9 +172,10 @@ func TestWalEvent_CreateEventsWithFilter(t *testing.T) {
 			},
 			want: []Event{
 				{
-					TableName: "users",
-					Action:    "insert",
-					Data:      map[string]interface{}{"first": "v1", "second": "v2"},
+					Scheme: "public",
+					Table:  "users",
+					Action: "insert",
+					Data:   map[string]interface{}{"first": "v1", "second": "v2"},
 				},
 			},
 		},
@@ -225,14 +228,16 @@ func TestWalEvent_CreateEventsWithFilter(t *testing.T) {
 			},
 			want: []Event{
 				{
-					TableName: "users",
-					Action:    "insert",
-					Data:      map[string]interface{}{"first": "v1", "second": "v2"},
+					Scheme: "public",
+					Table:  "users",
+					Action: "insert",
+					Data:   map[string]interface{}{"first": "v1", "second": "v2"},
 				},
 				{
-					TableName: "pets",
-					Action:    "update",
-					Data:      map[string]interface{}{"k1": "v1", "k2": "v2"},
+					Scheme: "public",
+					Table:  "pets",
+					Action: "update",
+					Data:   map[string]interface{}{"k1": "v1", "k2": "v2"},
 				},
 			},
 		},
@@ -282,9 +287,10 @@ func TestWalEvent_CreateEventsWithFilter(t *testing.T) {
 			},
 			want: []Event{
 				{
-					TableName: "users",
-					Action:    "insert",
-					Data:      map[string]interface{}{"first": "v1", "second": "v2"},
+					Scheme: "public",
+					Table:  "users",
+					Action: "insert",
+					Data:   map[string]interface{}{"first": "v1", "second": "v2"},
 				},
 			},
 		},
@@ -334,9 +340,10 @@ func TestWalEvent_CreateEventsWithFilter(t *testing.T) {
 			},
 			want: []Event{
 				{
-					TableName: "users",
-					Action:    "insert",
-					Data:      map[string]interface{}{"first": "v1", "second": "v2"},
+					Scheme: "public",
+					Table:  "users",
+					Action: "insert",
+					Data:   map[string]interface{}{"first": "v1", "second": "v2"},
 				},
 			},
 		},

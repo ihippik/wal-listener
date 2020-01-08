@@ -36,8 +36,10 @@ func easyjsonAd513449DecodeGithubComIhippikWalListenerListener(in *jlexer.Lexer,
 			continue
 		}
 		switch key {
-		case "tableName":
-			out.TableName = string(in.String())
+		case "scheme":
+			out.Scheme = string(in.String())
+		case "table":
+			out.Table = string(in.String())
 		case "action":
 			out.Action = string(in.String())
 		case "data":
@@ -81,9 +83,14 @@ func easyjsonAd513449EncodeGithubComIhippikWalListenerListener(out *jwriter.Writ
 	first := true
 	_ = first
 	{
-		const prefix string = ",\"tableName\":"
+		const prefix string = ",\"scheme\":"
 		out.RawString(prefix[1:])
-		out.String(string(in.TableName))
+		out.String(string(in.Scheme))
+	}
+	{
+		const prefix string = ",\"table\":"
+		out.RawString(prefix)
+		out.String(string(in.Table))
 	}
 	{
 		const prefix string = ",\"action\":"

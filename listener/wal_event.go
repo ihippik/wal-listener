@@ -63,14 +63,25 @@ func (w *WalEvent) CreateEventsWithFilter(tableMap map[string][]string) []Event 
 
 		}
 
-		event := Event{TableName: item.Table, Action: item.Kind, Data: data}
+		event := Event{
+			Scheme: item.Schema,
+			Table:  item.Table,
+			Action: item.Kind,
+			Data:   data,
+		}
 
 		actions, validTable := tableMap[item.Table]
 		validAction := inArray(actions, item.Kind)
 		if validTable && validAction {
 			events = append(events, event)
 		} else {
-			logrus.WithFields(logrus.Fields{"table": item.Table, "action": item.Kind}).Infoln("wal message skip by filter")
+			logrus.WithFields(
+				logrus.Fields{
+					"scheme": item.Schema,
+					"table":  item.Table,
+					"action": item.Kind,
+				}).
+				Infoln("wal message skip by filter")
 		}
 	}
 	return events

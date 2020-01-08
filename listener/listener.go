@@ -196,7 +196,7 @@ func (w *Listener) Stream(ctx context.Context) {
 				logrus.WithFields(logrus.Fields{"next_lsn": m.NextLSN, "count_events": len(m.Change)}).
 					Infoln("receive wal message")
 				for _, event := range m.CreateEventsWithFilter(w.config.Database.Filter.Tables) {
-					logrus.WithFields(logrus.Fields{"action": event.Action, "table": event.TableName}).
+					logrus.WithFields(logrus.Fields{"action": event.Action, "table": event.Table}).
 						Debugln("receive events")
 					msg, err := event.MarshalJSON()
 					if err != nil {
@@ -204,7 +204,7 @@ func (w *Listener) Stream(ctx context.Context) {
 						continue
 					}
 
-					subjectName := event.GetSubjectName(w.config.Nats.TopicPrefix, w.config.Database.Name)
+					subjectName := event.GetSubjectName(w.config.Nats.TopicPrefix)
 
 					// TODO tracer?!
 					// TODO retry func for publish?!
