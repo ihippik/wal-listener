@@ -34,7 +34,7 @@ the name of the database and the name of the table `prefix + schema_table`.
 
 Messages are published to Nats-Streaming at least once!
 
-## Restrictions
+### Restrictions
 
 * DB Postgres must be configured for logical replication and `wal2json` extension installed  
 (use for test `docker run -it -p 5432:5432 debezium/postgres:11`)
