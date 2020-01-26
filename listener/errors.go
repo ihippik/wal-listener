@@ -18,6 +18,7 @@ var (
 	errReplConnectionIsLost = errors.New("replication connection to postgres is lost")
 	errConnectionIsLost     = errors.New("db connection to postgres is lost")
 	errMessageLost          = errors.New("messages are lost")
+	errEmptyWALMessage      = errors.New("empty WAL message")
 )
 
 type serviceErr struct {

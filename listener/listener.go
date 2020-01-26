@@ -2,7 +2,6 @@ package listener
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -20,8 +19,7 @@ const errorBufferSize = 100
 
 // Logical decoding plugin.
 const (
-	pgoutputPlugin      = "pgoutput"
-	pluginArgIncludeLSN = `"include-lsn" 'on'`
+	pgoutputPlugin = "pgoutput"
 )
 
 // Service info message.
@@ -33,6 +31,10 @@ const (
 type publisher interface {
 	Publish(string, Event) error
 	Close() error
+}
+
+type parser interface {
+	ParseWalMessage([]byte, *WalTransaction) error
 }
 
 type replication interface {
@@ -58,17 +60,25 @@ type Listener struct {
 	publisher  publisher
 	replicator replication
 	repository repository
+	parser     parser
 	LSN        uint64
 	errChannel chan error
 }
 
-func NewWalListener(cfg *config.Config, repo repository, repl replication, publ publisher) *Listener {
+func NewWalListener(
+	cfg *config.Config,
+	repo repository,
+	repl replication,
+	publ publisher,
+	parser parser,
+) *Listener {
 	return &Listener{
 		slotName:   fmt.Sprintf("%s_%s", cfg.Listener.SlotName, cfg.Database.Name),
 		config:     *cfg,
 		publisher:  publ,
 		repository: repo,
 		replicator: repl,
+		parser:     parser,
 		errChannel: make(chan error, errorBufferSize),
 	}
 }
@@ -186,11 +196,7 @@ func (l *Listener) Stream(ctx context.Context) {
 			if msg.WalMessage != nil {
 				logrus.WithField("wal", msg.WalMessage.WalStart).
 					Debugln("receive wal message    ")
-				messageParser := NewBinaryParser(
-					binary.BigEndian,
-					msg.WalMessage.WalData,
-				)
-				err := messageParser.ParseWalMessage(tx)
+				err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx)
 				if err != nil {
 					logrus.WithError(err).Errorln("msg parse failed")
 					l.errChannel <- fmt.Errorf("%v: %w", ErrUnmarshalMsg, err)

@@ -15,16 +15,18 @@ type BinaryParser struct {
 	buffer    *bytes.Buffer
 }
 
-func NewBinaryParser(byteOrder binary.ByteOrder, msg []byte) *BinaryParser {
+func NewBinaryParser(byteOrder binary.ByteOrder) *BinaryParser {
 	return &BinaryParser{
 		byteOrder: byteOrder,
-		msgType:   msg[0],
-		buffer:    bytes.NewBuffer(msg[1:]),
 	}
 }
 
-func (p *BinaryParser) ParseWalMessage(tx *WalTransaction) error {
-	switch p.msgType {
+func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
+	if len(msg) == 0 {
+		return errEmptyWALMessage
+	}
+	p.buffer = bytes.NewBuffer(msg[1:])
+	switch msg[0] {
 	case BeginMsgType:
 		begin := p.getBeginMsg()
 		logrus.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 
@@ -51,7 +52,8 @@ func main() {
 			}
 			repo := listener.NewRepository(conn)
 			natsPublisher := listener.NewNatsPublisher(sc)
-			service := listener.NewWalListener(cfg, repo, rConn, natsPublisher)
+			parser := listener.NewBinaryParser(binary.BigEndian)
+			service := listener.NewWalListener(cfg, repo, rConn, natsPublisher, parser)
 			return service.Process()
 		},
 	}
