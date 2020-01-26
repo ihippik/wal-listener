@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -36,7 +35,7 @@ func (p *BinaryParser) ParseWalMessage(tx *WalTransaction) error {
 				}).
 			Infoln("receive begin message")
 		tx.LSN = begin.LSN
-		tx.BeginTime = begin.Timestamp
+		tx.BeginTime = &begin.Timestamp
 	case CommitMsgType:
 		commit := p.getCommitMsg()
 		logrus.
@@ -47,9 +46,9 @@ func (p *BinaryParser) ParseWalMessage(tx *WalTransaction) error {
 				}).
 			Infoln("receive commit message")
 		if tx.LSN > 0 && tx.LSN != commit.LSN {
-			return fmt.Errorf("commit: %w", ErrMessageLost)
+			return fmt.Errorf("commit: %w", errMessageLost)
 		}
-		tx.CommitTime = commit.Timestamp
+		tx.CommitTime = &commit.Timestamp
 	case OriginMsgType:
 		logrus.Infoln("receive origin message")
 	case RelationMsgType:
@@ -62,7 +61,7 @@ func (p *BinaryParser) ParseWalMessage(tx *WalTransaction) error {
 				}).
 			Infoln("receive relation message")
 		if tx.LSN == 0 {
-			return fmt.Errorf("commit: %w", ErrMessageLost)
+			return fmt.Errorf("commit: %w", errMessageLost)
 		}
 		rd := RelationData{
 			Schema: relation.Namespace,
@@ -70,9 +69,9 @@ func (p *BinaryParser) ParseWalMessage(tx *WalTransaction) error {
 		}
 		for _, rf := range relation.Columns {
 			c := Column{
-				Name:  rf.Name,
-				Type:  strconv.Itoa(int(rf.TypeID)),
-				IsKey: rf.Key,
+				name:      rf.Name,
+				valueType: int(rf.TypeID),
+				isKey:     rf.Key,
 			}
 			rd.Columns = append(rd.Columns, c)
 		}
@@ -196,7 +195,6 @@ func (p *BinaryParser) getRelationMsg() Relation {
 
 func (p *BinaryParser) readInt32() (val int32) {
 	r := bytes.NewReader(p.buffer.Next(4))
-	// TODO err
 	_ = binary.Read(r, p.byteOrder, &val)
 	return
 }
@@ -263,9 +261,10 @@ func (p *BinaryParser) readTupleData() []TupleData {
 	for i := 0; i < size; i++ {
 		switch p.buffer.Next(1)[0] {
 		case NullDataType:
-			logrus.Infoln("tupleData: null data type")
+			logrus.Debugln("tupleData: null data type")
 		case ToastDataType:
-			logrus.Infoln("tupleData: toast data type")
+			logrus.Debugln(
+				"tupleData: toast data type")
 		case TextDataType:
 			vsize := int(p.readInt32())
 			data[i] = TupleData{Value: p.buffer.Next(vsize)}

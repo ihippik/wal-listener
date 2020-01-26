@@ -48,7 +48,7 @@ type (
 	Origin struct {
 		// The LSN of the commit on the origin server.
 		LSN int64
-		// Name of the origin.
+		// name of the origin.
 		Name string
 	}
 
@@ -105,18 +105,18 @@ type DataType struct {
 	ID int32
 	// Namespace (empty string for pg_catalog).
 	Namespace string
-	// Name of the data type.
+	// name of the data type.
 	Name string
 }
 
 type RelationColumn struct {
 	// Flags for the column which marks the column as part of the key.
 	Key bool
-	// Name of the column.
+	// name of the column.
 	Name string
 	// ID of the column's data type.
 	TypeID int32
-	// Type modifier of the column (atttypmod).
+	// valueType modifier of the column (atttypmod).
 	ModifierType int32
 }
 

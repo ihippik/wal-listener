@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/jackc/pgx"
 	"github.com/sirupsen/logrus"
 
@@ -186,22 +185,33 @@ func (l *Listener) Stream(ctx context.Context) {
 		if msg != nil {
 			if msg.WalMessage != nil {
 				logrus.WithField("wal", msg.WalMessage.WalStart).
-					Infoln("receive wal message    ")
-				p := NewBinaryParser(
+					Debugln("receive wal message    ")
+				messageParser := NewBinaryParser(
 					binary.BigEndian,
 					msg.WalMessage.WalData,
 				)
-				err := p.ParseWalMessage(tx)
+				err := messageParser.ParseWalMessage(tx)
 				if err != nil {
 					logrus.WithError(err).Errorln("msg parse failed")
 					l.errChannel <- fmt.Errorf("%v: %w", ErrUnmarshalMsg, err)
 					continue
 				}
-				if !tx.CommitTime.IsZero() {
+				if tx.CommitTime != nil {
 					natsEvents := tx.CreateEventsWithFilter(l.config.Database.Filter.Tables)
 					for _, event := range natsEvents {
-						spew.Dump(event)
+						subjectName := event.GetSubjectName(l.config.Nats.TopicPrefix)
+						if err = l.publisher.Publish(subjectName, event); err != nil {
+							l.errChannel <- fmt.Errorf("%v: %w", ErrPublishEvent, err)
+							continue
+						} else {
+							logrus.
+								WithField("subject", subjectName).
+								WithField("action", event.Action).
+								WithField("lsn", l.LSN).
+								Infoln("event was send")
+						}
 					}
+					tx.Clear()
 				}
 
 				if msg.WalMessage.WalStart > l.LSN {

@@ -2,7 +2,9 @@ package listener
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/nats-io/stan.go"
 )
 
@@ -19,10 +21,12 @@ func (n NatsPublisher) Close() error {
 // Event event structure for publishing to the NATS server.
 //easyjson:json
 type Event struct {
-	Schema string                 `json:"schema"`
-	Table  string                 `json:"table"`
-	Action string                 `json:"action"`
-	Data   map[string]interface{} `json:"data"`
+	ID        uuid.UUID              `json:"id"`
+	Schema    string                 `json:"schema"`
+	Table     string                 `json:"table"`
+	Action    string                 `json:"action"`
+	Data      map[string]interface{} `json:"data"`
+	EventTime time.Time              `json:"commitTime"`
 }
 
 func (n NatsPublisher) Publish(subject string, event Event) error {

@@ -36,6 +36,10 @@ func easyjsonAd513449DecodeGithubComIhippikWalListenerListener(in *jlexer.Lexer,
 			continue
 		}
 		switch key {
+		case "id":
+			if data := in.UnsafeBytes(); in.Ok() {
+				in.AddError((out.ID).UnmarshalText(data))
+			}
 		case "schema":
 			out.Schema = string(in.String())
 		case "table":
@@ -68,6 +72,10 @@ func easyjsonAd513449DecodeGithubComIhippikWalListenerListener(in *jlexer.Lexer,
 				}
 				in.Delim('}')
 			}
+		case "commitTime":
+			if data := in.Raw(); in.Ok() {
+				in.AddError((out.EventTime).UnmarshalJSON(data))
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -83,8 +91,13 @@ func easyjsonAd513449EncodeGithubComIhippikWalListenerListener(out *jwriter.Writ
 	first := true
 	_ = first
 	{
-		const prefix string = ",\"schema\":"
+		const prefix string = ",\"id\":"
 		out.RawString(prefix[1:])
+		out.RawText((in.ID).MarshalText())
+	}
+	{
+		const prefix string = ",\"schema\":"
+		out.RawString(prefix)
 		out.String(string(in.Schema))
 	}
 	{
@@ -123,6 +136,11 @@ func easyjsonAd513449EncodeGithubComIhippikWalListenerListener(out *jwriter.Writ
 			}
 			out.RawByte('}')
 		}
+	}
+	{
+		const prefix string = ",\"commitTime\":"
+		out.RawString(prefix)
+		out.Raw((in.EventTime).MarshalJSON())
 	}
 	out.RawByte('}')
 }

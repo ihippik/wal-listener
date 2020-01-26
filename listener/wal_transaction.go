@@ -2,9 +2,12 @@ package listener
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/pgtype"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,8 +22,8 @@ const (
 
 type WalTransaction struct {
 	LSN           int64
-	BeginTime     time.Time
-	CommitTime    time.Time
+	BeginTime     *time.Time
+	CommitTime    *time.Time
 	RelationStore map[int32]RelationData
 	Actions       []ActionData
 }
@@ -49,10 +52,36 @@ type ActionData struct {
 }
 
 type Column struct {
-	Name  string
-	Value interface{}
-	Type  string
-	IsKey bool
+	name      string
+	value     interface{}
+	valueType int
+	isKey     bool
+}
+
+func (c *Column) AssertValue(src []byte) {
+	var val interface{}
+	strSrc := string(src)
+	switch c.valueType {
+	case pgtype.BoolOID:
+		val, _ = strconv.ParseBool(strSrc)
+	case pgtype.Int4OID:
+		val, _ = strconv.Atoi(strSrc)
+	case pgtype.TextOID:
+		val = strSrc
+	case pgtype.TimestampOID:
+		val = strSrc
+	default:
+		logrus.WithField("pgtype", c.valueType).
+			Warnln("unknown oid type")
+		val = strSrc
+	}
+	c.value = val
+}
+
+func (w *WalTransaction) Clear() {
+	w.CommitTime = nil
+	w.BeginTime = nil
+	w.Actions = []ActionData{}
 }
 
 func (w WalTransaction) CreateActionData(
@@ -71,13 +100,14 @@ func (w WalTransaction) CreateActionData(
 	}
 	var columns []Column
 	for num, row := range rows {
-		columns = append(columns, Column{
-			Name: rel.Columns[num].Name,
-			// TODO type assert!
-			Value: string(row.Value),
-			Type:  rel.Columns[num].Type,
-			IsKey: rel.Columns[num].IsKey,
-		})
+		column := Column{
+			name:      rel.Columns[num].name,
+			valueType: rel.Columns[num].valueType,
+			isKey:     rel.Columns[num].isKey,
+		}
+		column.AssertValue(row.Value)
+
+		columns = append(columns, column)
 	}
 	a.Columns = columns
 	return a, nil
@@ -91,13 +121,15 @@ func (w *WalTransaction) CreateEventsWithFilter(
 	for _, item := range w.Actions {
 		data := make(map[string]interface{})
 		for _, val := range item.Columns {
-			data[val.Name] = val.Value
+			data[val.name] = val.value
 		}
 		event := Event{
-			Schema: item.Schema,
-			Table:  item.Table,
-			Action: item.Kind.string(),
-			Data:   data,
+			ID:        uuid.New(),
+			Schema:    item.Schema,
+			Table:     item.Table,
+			Action:    item.Kind.string(),
+			Data:      data,
+			EventTime: *w.CommitTime,
 		}
 
 		actions, validTable := tableMap[item.Table]
