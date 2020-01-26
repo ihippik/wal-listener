@@ -1,21 +1,22 @@
 listener:
-  slotName: myslot
+  slotName: myslot_2
   ackTimeout: 10s
   refreshConnection: 30s
   heartbeatInterval: 10s
 logger:
   caller: false
-  level: debug
+  level: info
   humanReadable: true
 database:
-  host: localhost
+  host: 81.90.180.219
   port: 5432
-  name: test
-  user: postgres
-  password: postgres
+  name: scum_db
+  user: pglogrepl
+  debug: false
+  password: secret
   filter:
     tables:
-      my_table:
+      table_name:
         - insert
         - update
 nats:

@@ -18,6 +18,7 @@ const (
 var (
 	errReplConnectionIsLost = errors.New("replication connection to postgres is lost")
 	errConnectionIsLost     = errors.New("db connection to postgres is lost")
+	ErrMessageLost          = errors.New("messages are lost")
 )
 
 type serviceErr struct {

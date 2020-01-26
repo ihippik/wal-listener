@@ -25,7 +25,11 @@ type Event struct {
 	Data   map[string]interface{} `json:"data"`
 }
 
-func (n NatsPublisher) Publish(subject string, msg []byte) error {
+func (n NatsPublisher) Publish(subject string, event Event) error {
+	msg, err := event.MarshalJSON()
+	if err != nil {
+		return fmt.Errorf("marshal err: %w", err)
+	}
 	return n.conn.Publish(subject, msg)
 }
 

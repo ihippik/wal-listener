@@ -2,6 +2,7 @@ package listener
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/jackc/pgx"
 	"github.com/sirupsen/logrus"
 
@@ -19,7 +21,7 @@ const errorBufferSize = 100
 
 // Logical decoding plugin.
 const (
-	wal2JsonPlugin      = "wal2json"
+	pgoutputPlugin      = "pgoutput"
 	pluginArgIncludeLSN = `"include-lsn" 'on'`
 )
 
@@ -30,7 +32,7 @@ const (
 )
 
 type publisher interface {
-	Publish(subject string, msg []byte) error
+	Publish(string, Event) error
 	Close() error
 }
 
@@ -57,7 +59,7 @@ type Listener struct {
 	publisher  publisher
 	replicator replication
 	repository repository
-	restartLSN uint64
+	LSN        uint64
 	errChannel chan error
 }
 
@@ -73,48 +75,48 @@ func NewWalListener(cfg *config.Config, repo repository, repl replication, publ 
 }
 
 // Process is main service entry point.
-func (w *Listener) Process() error {
+func (l *Listener) Process() error {
 	var serviceErr *serviceErr
-	logger := logrus.WithField("slot_name", w.slotName)
+	logger := logrus.WithField("slot_name", l.slotName)
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	logrus.WithField("logger_level", w.config.Logger.Level).Infoln(StartServiceMessage)
+	logrus.WithField("logger_level", l.config.Logger.Level).Infoln(StartServiceMessage)
 
-	slotIsExists, err := w.slotIsExists()
+	slotIsExists, err := l.slotIsExists()
 	if err != nil {
 		return err
 	}
 
 	if !slotIsExists {
-		consistentPoint, _, err := w.replicator.CreateReplicationSlotEx(w.slotName, wal2JsonPlugin)
+		consistentPoint, _, err := l.replicator.CreateReplicationSlotEx(l.slotName, pgoutputPlugin)
 		if err != nil {
 			return err
 		}
-		w.restartLSN, err = pgx.ParseLSN(consistentPoint)
+		l.LSN, err = pgx.ParseLSN(consistentPoint)
 		logger.Infoln("create new slot")
 		if err != nil {
 			return err
 		}
 	} else {
-		logger.Infoln("slot already exists, restartLSN updated")
+		logger.Infoln("slot already exists, LSN updated")
 	}
 
-	go w.Stream(ctx)
+	go l.Stream(ctx)
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	refresh := time.Tick(w.config.Listener.RefreshConnection)
+	refresh := time.Tick(l.config.Listener.RefreshConnection)
 ProcessLoop:
 	for {
 		select {
 		case <-refresh:
-			if !w.replicator.IsAlive() {
+			if !l.replicator.IsAlive() {
 				logrus.Fatalln(errReplConnectionIsLost)
 			}
-			if !w.repository.IsAlive() {
+			if !l.repository.IsAlive() {
 				logrus.Fatalln(errConnectionIsLost)
-				w.errChannel <- errConnectionIsLost
+				l.errChannel <- errConnectionIsLost
 			}
-		case err := <-w.errChannel:
+		case err := <-l.errChannel:
 			if errors.As(err, &serviceErr) {
 				cancelFunc()
 				logrus.Fatalln(err)
@@ -124,7 +126,7 @@ ProcessLoop:
 
 		case <-signalChan:
 			cancelFunc()
-			err := w.Stop()
+			err := l.Stop()
 			if err != nil {
 				logrus.Errorln(err)
 			}
@@ -135,8 +137,8 @@ ProcessLoop:
 }
 
 // slotIsExists checks whether a slot has already been created and if it has been created uses it.
-func (w *Listener) slotIsExists() (bool, error) {
-	restartLSNStr, err := w.repository.GetSlotLSN(w.slotName)
+func (l *Listener) slotIsExists() (bool, error) {
+	restartLSNStr, err := l.repository.GetSlotLSN(l.slotName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil
@@ -146,97 +148,84 @@ func (w *Listener) slotIsExists() (bool, error) {
 	if len(restartLSNStr) == 0 {
 		return false, nil
 	}
-	w.restartLSN, err = pgx.ParseLSN(restartLSNStr)
+	l.LSN, err = pgx.ParseLSN(restartLSNStr)
 	if err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
+func publicationNames(publication string) string {
+	return fmt.Sprintf(`publication_names '%s'`, publication)
+}
+
+const protoVersion = "proto_version '1'"
+
 // Stream receive event from PostgreSQL.
 // Accept message, apply filter and  publish it in NATS server.
-func (w *Listener) Stream(ctx context.Context) {
-	err := w.replicator.StartReplication(w.slotName, w.restartLSN, -1, pluginArgIncludeLSN)
+func (l *Listener) Stream(ctx context.Context) {
+	err := l.replicator.StartReplication(l.slotName, l.LSN, -1, protoVersion, publicationNames("sport"))
 	if err != nil {
-		w.errChannel <- newListenerError("StartReplication()", err)
+		l.errChannel <- newListenerError("StartReplication()", err)
 		return
 	}
 
-	go w.SendPeriodicHeartbeats(ctx)
-
+	go l.SendPeriodicHeartbeats(ctx)
+	tx := NewWalTransaction()
 	for {
 		if ctx.Err() != nil {
-			w.errChannel <- newListenerError("read message", err)
+			l.errChannel <- newListenerError("read msg", err)
 			break
 		}
-		message, err := w.replicator.WaitForReplicationMessage(ctx)
+		msg, err := l.replicator.WaitForReplicationMessage(ctx)
 		if err != nil {
-			w.errChannel <- newListenerError("WaitForReplicationMessage()", err)
+			l.errChannel <- newListenerError("WaitForReplicationMessage()", err)
 			continue
 		}
 
-		if message != nil {
-			if message.WalMessage != nil {
-				var m WalEvent
-				walData := message.WalMessage.WalData
-				err = m.UnmarshalJSON(walData)
+		if msg != nil {
+			if msg.WalMessage != nil {
+				logrus.WithField("wal", msg.WalMessage.WalStart).
+					Infoln("receive wal message    ")
+				p := NewBinaryParser(
+					binary.BigEndian,
+					msg.WalMessage.WalData,
+				)
+				err := p.ParseWalMessage(tx)
 				if err != nil {
-					w.errChannel <- fmt.Errorf("%v: %w", ErrUnmarshalMsg, err)
+					logrus.WithError(err).Errorln("msg parse failed")
+					l.errChannel <- fmt.Errorf("%v: %w", ErrUnmarshalMsg, err)
 					continue
 				}
-				if len(m.Change) == 0 {
-					logrus.WithField("next_lsn", m.NextLSN).Infoln("skip empty WAL message")
-					continue
-				}
-				err = m.Validate()
-				if err != nil {
-					logrus.WithError(err).Warningln(ErrValidateMessage)
-					continue
-				}
-				logrus.WithFields(logrus.Fields{"next_lsn": m.NextLSN, "count_events": len(m.Change)}).
-					Infoln("receive wal message")
-				for _, event := range m.CreateEventsWithFilter(w.config.Database.Filter.Tables) {
-					logrus.WithFields(logrus.Fields{"action": event.Action, "table": event.Table}).
-						Debugln("receive events")
-					msg, err := event.MarshalJSON()
-					if err != nil {
-						w.errChannel <- fmt.Errorf("%v: %w", ErrMarshalMsg, err)
-						continue
+				if !tx.CommitTime.IsZero() {
+					natsEvents := tx.CreateEventsWithFilter(l.config.Database.Filter.Tables)
+					for _, event := range natsEvents {
+						spew.Dump(event)
 					}
+				}
 
-					subjectName := event.GetSubjectName(w.config.Nats.TopicPrefix)
-
-					// TODO tracer?!
-					// TODO retry func for publish?!
-					err = w.publisher.Publish(subjectName, msg)
+				if msg.WalMessage.WalStart > l.LSN {
+					err = l.AckWalMessage(msg.WalMessage.WalStart)
 					if err != nil {
-						w.errChannel <- newListenerError("Publish()", err)
+						l.errChannel <- fmt.Errorf("%v: %w", ErrAckWalMessage, err)
 						continue
 					} else {
-						logrus.WithField("nxt_lsn", m.NextLSN).Infoln("event publish to NATS")
+						logrus.WithField("lsn", l.LSN).Debugln("ack wal msg")
 					}
 				}
-
-				err = w.AckWalMessage(m.NextLSN)
-				if err != nil {
-					w.errChannel <- fmt.Errorf("%v: %w", ErrAckWalMessage, err)
-					continue
-				} else {
-					logrus.WithField("lsn", m.NextLSN).Debugln("ack wal message")
-				}
 			}
-			if message.ServerHeartbeat != nil {
+			if msg.ServerHeartbeat != nil {
 				//FIXME panic if there have been no messages for a long time.
 				logrus.WithFields(logrus.Fields{
-					"server_wal_end": message.ServerHeartbeat.ServerWalEnd,
-					"server_time":    message.ServerHeartbeat.ServerTime,
+					"server_wal_end": msg.ServerHeartbeat.ServerWalEnd,
+					"server_time":    msg.ServerHeartbeat.ServerTime,
 				}).
 					Debugln("received server heartbeat")
-				if message.ServerHeartbeat.ReplyRequested == 1 {
+				if msg.ServerHeartbeat.ReplyRequested == 1 {
 					logrus.Debugln("status requested")
-					err = w.SendStandbyStatus()
+					err = l.SendStandbyStatus()
 					if err != nil {
-						w.errChannel <- fmt.Errorf("%v: %w", ErrSendStandbyStatus, err)
+						l.errChannel <- fmt.Errorf("%v: %w", ErrSendStandbyStatus, err)
 					}
 				}
 			}
@@ -245,17 +234,17 @@ func (w *Listener) Stream(ctx context.Context) {
 }
 
 // Stop is a finalizer function.
-func (w *Listener) Stop() error {
+func (l *Listener) Stop() error {
 	var err error
-	err = w.publisher.Close()
+	err = l.publisher.Close()
 	if err != nil {
 		return err
 	}
-	err = w.repository.Close()
+	err = l.repository.Close()
 	if err != nil {
 		return err
 	}
-	err = w.replicator.Close()
+	err = l.replicator.Close()
 	if err != nil {
 		return err
 	}
@@ -264,16 +253,16 @@ func (w *Listener) Stop() error {
 }
 
 // SendPeriodicHeartbeats send periodic keep alive hearbeats to the server.
-func (w *Listener) SendPeriodicHeartbeats(ctx context.Context) {
+func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			logrus.WithField("func", "SendPeriodicHeartbeats").
 				Infoln("context was canceled, stop sending heartbeats")
 			return
-		case <-time.Tick(w.config.Listener.HeartbeatInterval):
+		case <-time.Tick(l.config.Listener.HeartbeatInterval):
 			{
-				err := w.SendStandbyStatus()
+				err := l.SendStandbyStatus()
 				if err != nil {
 					logrus.WithError(err).Errorln("failed to send status heartbeat")
 					continue
@@ -285,13 +274,13 @@ func (w *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 }
 
 // SendStandbyStatus sends a `StandbyStatus` object with the current RestartLSN value to the server.
-func (w *Listener) SendStandbyStatus() error {
-	standbyStatus, err := pgx.NewStandbyStatus(w.restartLSN)
+func (l *Listener) SendStandbyStatus() error {
+	standbyStatus, err := pgx.NewStandbyStatus(l.LSN)
 	if err != nil {
 		return fmt.Errorf("unable to create StandbyStatus object: %w", err)
 	}
 	standbyStatus.ReplyRequested = 0
-	err = w.replicator.SendStandbyStatus(standbyStatus)
+	err = l.replicator.SendStandbyStatus(standbyStatus)
 	if err != nil {
 		return fmt.Errorf("unable to send StandbyStatus object: %w", err)
 	}
@@ -299,13 +288,9 @@ func (w *Listener) SendStandbyStatus() error {
 }
 
 // AckWalMessage acknowledge received wal message.
-func (w *Listener) AckWalMessage(restartLSNStr string) error {
-	restartLSN, err := pgx.ParseLSN(restartLSNStr)
-	if err != nil {
-		return err
-	}
-	w.restartLSN = restartLSN
-	err = w.SendStandbyStatus()
+func (l *Listener) AckWalMessage(lsn uint64) error {
+	l.LSN = lsn
+	err := l.SendStandbyStatus()
 	if err != nil {
 		return err
 	}
