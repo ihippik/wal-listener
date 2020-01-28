@@ -1,8 +1,11 @@
 package listener
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
 	"testing"
 	"time"
 
@@ -268,7 +271,6 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 }
 
 func TestListener_AckWalMessage(t *testing.T) {
-	t.Skip("TODO")
 	repl := new(replicatorMock)
 	type fields struct {
 		restartLSN uint64
@@ -314,7 +316,7 @@ func TestListener_AckWalMessage(t *testing.T) {
 				restartLSN: 0,
 			},
 			args: args{
-				LSN: 123,
+				LSN: 24658872,
 			},
 			wantErr: false,
 		},
@@ -336,7 +338,7 @@ func TestListener_AckWalMessage(t *testing.T) {
 				restartLSN: 0,
 			},
 			args: args{
-				LSN: 123,
+				LSN: 24658872,
 			},
 			wantErr: true,
 		},
@@ -358,10 +360,11 @@ func TestListener_AckWalMessage(t *testing.T) {
 }
 
 func TestListener_Stream(t *testing.T) {
-	t.Skip("TODO")
+	logrus.SetLevel(logrus.FatalLevel)
 	repo := new(repositoryMock)
 	publ := new(publisherMock)
 	repl := new(replicatorMock)
+	prs := new(parserMock)
 	type fields struct {
 		config     config.Config
 		slotName   string
@@ -375,12 +378,9 @@ func TestListener_Stream(t *testing.T) {
 	patch := monkey.Patch(time.Now, func() time.Time { return wayback })
 	defer patch.Unpatch()
 
-	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
-		repl.On(
-			"SendStandbyStatus",
-			status,
-		).
-			Return(err)
+	setParseWalMessageOnce := func(msg []byte, tx *WalTransaction, err error) {
+		prs.On("ParseWalMessage", msg, tx).Return(err).Once().
+			After(10 * time.Millisecond)
 	}
 
 	setStartReplication := func(err error, slotName string, startLsn uint64, timeline int64, pluginArguments ...string) {
@@ -390,20 +390,30 @@ func TestListener_Stream(t *testing.T) {
 			startLsn,
 			timeline,
 			pluginArguments,
-		).Return(err)
+		).Return(err).Once().After(10 * time.Millisecond)
 	}
 
 	setWaitForReplicationMessage := func(msg *pgx.ReplicationMessage, err error) {
 		repl.On(
 			"WaitForReplicationMessage",
 			mock.Anything,
-		).Return(msg, err)
+		).Return(msg, err).Once().After(10 * time.Millisecond)
 	}
 
-	setPublish := func(subject string, msg []byte, err error) {
-		publ.On("Publish", subject, msg).Return(err)
+	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
+		repl.On(
+			"SendStandbyStatus",
+			status,
+		).
+			Return(err).After(10 * time.Millisecond)
 	}
 
+	setPublish := func(subject string, event Event, err error) {
+		publ.On("Publish", subject, event).Return(err).
+			Once().
+			After(10 * time.Millisecond)
+	}
+	uuid.SetRand(bytes.NewReader(make([]byte, 512)))
 	tests := []struct {
 		name   string
 		setup  func()
@@ -418,92 +428,56 @@ func TestListener_Stream(t *testing.T) {
 					"myslot",
 					uint64(0),
 					int64(-1),
-					pluginArgIncludeLSN,
-				)
-				setPublish(
-					"pre_user_service_users",
-					[]byte(`{"schema":"user_service","table":"users","action":"insert","data":{"k1":"v1"}}`),
-					nil,
+					protoVersion,
+					"publication_names 'sport'",
 				)
 				setSendStandbyStatus(
 					&pgx.StandbyStatus{
-						WalWritePosition: 24658872,
-						WalFlushPosition: 24658872,
-						WalApplyPosition: 24658872,
+						WalWritePosition: 10,
+						WalFlushPosition: 10,
+						WalApplyPosition: 10,
 						ClientTime:       18445935546232551617,
 						ReplyRequested:   0,
 					},
 					nil,
 				)
+				setParseWalMessageOnce(
+					[]byte(`some bytes`),
+					&WalTransaction{
+						LSN:           0,
+						BeginTime:     nil,
+						CommitTime:    nil,
+						RelationStore: make(map[int32]RelationData),
+						Actions:       nil,
+					},
+					nil,
+				)
 
-				setWaitForReplicationMessage(
-					&pgx.ReplicationMessage{
-						WalMessage: &pgx.WalMessage{
-							WalStart:     0,
-							ServerWalEnd: 0,
-							ServerTime:   0,
-							WalData:      []byte(`{"nextlsn":"0/17843B8","change":[{"kind":"insert","schema":"user_service","table":"users","columnnames":["k1"],"columnvalues":["v1"]}]}`),
-						},
-						ServerHeartbeat: &pgx.ServerHeartbeat{
-							ServerWalEnd:   0,
-							ServerTime:     0,
-							ReplyRequested: 0,
-						},
-					},
-					nil,
-				)
-			},
-			fields: fields{
-				config: config.Config{
-					Listener: config.ListenerCfg{
-						SlotName:          "myslot",
-						AckTimeout:        0,
-						HeartbeatInterval: 0,
-					},
-					Database: config.DatabaseCfg{
-						Filter: config.FilterStruct{
-							Tables: map[string][]string{"users": {"insert"}},
-						},
-					},
-					Nats: config.NatsCfg{
-						TopicPrefix: "pre_",
-					},
-				},
-				slotName:   "myslot",
-				restartLSN: 0,
-			},
-			args: args{
-				timeout: 10 * time.Millisecond,
-			},
-		},
-		{
-			name: "publish err",
-			setup: func() {
-				setStartReplication(
-					nil,
-					"myslot",
-					uint64(0),
-					int64(-1),
-					pluginArgIncludeLSN,
-				)
 				setPublish(
-					"pre_users",
-					[]byte(`{"tableName":"users","action":"insert","data":{"k1":"v1"}}`),
-					someErr,
+					"pre_public_users",
+					Event{
+						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
+						Schema:    "public",
+						Table:     "users",
+						Action:    "INSERT",
+						Data:      map[string]interface{}{"id": 1},
+						EventTime: wayback,
+					},
+					nil,
 				)
 
 				setWaitForReplicationMessage(
 					&pgx.ReplicationMessage{
 						WalMessage: &pgx.WalMessage{
-							WalStart:     0,
+							WalStart:     10,
 							ServerWalEnd: 0,
 							ServerTime:   0,
-							WalData:      []byte(`{"nextLsn":"0","change":[{"kind":"insert","schema":"user_service","table":"users","columnnames":["k1"],"columnvalues":["v1"]}]}`),
+							WalData:      []byte(`some bytes`),
 						},
 						ServerHeartbeat: &pgx.ServerHeartbeat{
 							ServerWalEnd:   0,
 							ServerTime:     0,
-							ReplyRequested: 0,
+							ReplyRequested: 1,
 						},
 					},
 					nil,
@@ -529,139 +503,7 @@ func TestListener_Stream(t *testing.T) {
 				restartLSN: 0,
 			},
 			args: args{
-				timeout: 10 * time.Millisecond,
-			},
-		},
-		{
-			name: "validate err",
-			setup: func() {
-				setStartReplication(
-					nil,
-					"myslot",
-					uint64(0),
-					int64(-1),
-					pluginArgIncludeLSN,
-				)
-
-				setWaitForReplicationMessage(
-					&pgx.ReplicationMessage{
-						WalMessage: &pgx.WalMessage{
-							WalStart:     0,
-							ServerWalEnd: 0,
-							ServerTime:   0,
-							WalData:      []byte(`{"nextLsn":"0","change":[{"columnnames":["v1","v2"]}]}`),
-						},
-						ServerHeartbeat: &pgx.ServerHeartbeat{
-							ServerWalEnd:   0,
-							ServerTime:     0,
-							ReplyRequested: 0,
-						},
-					},
-					nil,
-				)
-			},
-			fields: fields{
-				config: config.Config{
-					Listener: config.ListenerCfg{
-						SlotName:          "myslot",
-						AckTimeout:        0,
-						RefreshConnection: 0,
-						HeartbeatInterval: 0,
-					},
-				},
-				slotName:   "myslot",
-				restartLSN: 0,
-			},
-			args: args{
-				timeout: 10 * time.Millisecond,
-			},
-		},
-		{
-			name: "skip empty WAL",
-			setup: func() {
-				setStartReplication(
-					nil,
-					"myslot",
-					uint64(0),
-					int64(-1),
-					pluginArgIncludeLSN,
-				)
-
-				setWaitForReplicationMessage(
-					&pgx.ReplicationMessage{
-						WalMessage: &pgx.WalMessage{
-							WalStart:     0,
-							ServerWalEnd: 0,
-							ServerTime:   0,
-							WalData:      []byte(`{"nextLsn":"0","change":[]}`),
-						},
-						ServerHeartbeat: &pgx.ServerHeartbeat{
-							ServerWalEnd:   0,
-							ServerTime:     0,
-							ReplyRequested: 0,
-						},
-					},
-					nil,
-				)
-			},
-			fields: fields{
-				config: config.Config{
-					Listener: config.ListenerCfg{
-						SlotName:          "myslot",
-						AckTimeout:        0,
-						RefreshConnection: 0,
-						HeartbeatInterval: 0,
-					},
-				},
-				slotName:   "myslot",
-				restartLSN: 0,
-			},
-			args: args{
-				timeout: 10 * time.Millisecond,
-			},
-		},
-		{
-			name: "message unmarshal err",
-			setup: func() {
-				setStartReplication(
-					nil,
-					"myslot",
-					uint64(0),
-					int64(-1),
-					pluginArgIncludeLSN,
-				)
-
-				setWaitForReplicationMessage(
-					&pgx.ReplicationMessage{
-						WalMessage: &pgx.WalMessage{
-							WalStart:     0,
-							ServerWalEnd: 0,
-							ServerTime:   0,
-							WalData:      nil,
-						},
-						ServerHeartbeat: &pgx.ServerHeartbeat{
-							ServerWalEnd:   0,
-							ServerTime:     0,
-							ReplyRequested: 0,
-						},
-					},
-					nil,
-				)
-			},
-			fields: fields{
-				config: config.Config{
-					Listener: config.ListenerCfg{
-						SlotName:          "myslot",
-						AckTimeout:        0,
-						RefreshConnection: 0,
-						HeartbeatInterval: 0,
-					},
-				},
-				slotName:   "myslot",
-				restartLSN: 0,
-			},
-			args: args{
-				timeout: 10 * time.Millisecond,
+				timeout: 40 * time.Millisecond,
 			},
 		},
 		{
@@ -672,7 +514,8 @@ func TestListener_Stream(t *testing.T) {
 					"myslot",
 					uint64(0),
 					int64(-1),
-					pluginArgIncludeLSN,
+					protoVersion,
+					"publication_names 'sport'",
 				)
 			},
 			fields: fields{
@@ -680,29 +523,49 @@ func TestListener_Stream(t *testing.T) {
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
-						RefreshConnection: 0,
 						HeartbeatInterval: 0,
+					},
+					Database: config.DatabaseCfg{
+						Filter: config.FilterStruct{
+							Tables: map[string][]string{"users": {"insert"}},
+						},
+					},
+					Nats: config.NatsCfg{
+						TopicPrefix: "pre_",
 					},
 				},
 				slotName:   "myslot",
 				restartLSN: 0,
 			},
 			args: args{
-				timeout: 1 * time.Second,
+				timeout: 100 * time.Microsecond,
 			},
 		},
 		{
-			name: "wait message err",
+			name: "wait replication err",
 			setup: func() {
 				setStartReplication(
 					nil,
 					"myslot",
 					uint64(0),
 					int64(-1),
-					pluginArgIncludeLSN,
+					protoVersion,
+					"publication_names 'sport'",
 				)
 				setWaitForReplicationMessage(
-					&pgx.ReplicationMessage{},
+					&pgx.ReplicationMessage{
+						WalMessage: &pgx.WalMessage{
+							WalStart:     10,
+							ServerWalEnd: 0,
+							ServerTime:   0,
+							WalData:      []byte(`some bytes`),
+						},
+						ServerHeartbeat: &pgx.ServerHeartbeat{
+							ServerWalEnd:   0,
+							ServerTime:     0,
+							ReplyRequested: 1,
+						},
+					},
 					someErr,
 				)
 			},
@@ -711,15 +574,169 @@ func TestListener_Stream(t *testing.T) {
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
-						RefreshConnection: 0,
 						HeartbeatInterval: 0,
+					},
+					Database: config.DatabaseCfg{
+						Filter: config.FilterStruct{
+							Tables: map[string][]string{"users": {"insert"}},
+						},
+					},
+					Nats: config.NatsCfg{
+						TopicPrefix: "pre_",
 					},
 				},
 				slotName:   "myslot",
 				restartLSN: 0,
 			},
 			args: args{
-				timeout: 1 * time.Second,
+				timeout: 20 * time.Millisecond,
+			},
+		},
+		{
+			name: "parse err",
+			setup: func() {
+				setStartReplication(
+					nil,
+					"myslot",
+					uint64(0),
+					int64(-1),
+					protoVersion,
+					"publication_names 'sport'",
+				)
+				setWaitForReplicationMessage(
+					&pgx.ReplicationMessage{
+						WalMessage: &pgx.WalMessage{
+							WalStart:     10,
+							ServerWalEnd: 0,
+							ServerTime:   0,
+							WalData:      []byte(`some bytes`),
+						},
+						ServerHeartbeat: &pgx.ServerHeartbeat{
+							ServerWalEnd:   0,
+							ServerTime:     0,
+							ReplyRequested: 1,
+						},
+					},
+					nil,
+				)
+				setParseWalMessageOnce(
+					[]byte(`some bytes`),
+					&WalTransaction{
+						LSN:           0,
+						BeginTime:     nil,
+						CommitTime:    nil,
+						RelationStore: make(map[int32]RelationData),
+						Actions:       nil,
+					},
+					someErr,
+				)
+			},
+			fields: fields{
+				config: config.Config{
+					Listener: config.ListenerCfg{
+						SlotName:          "myslot",
+						AckTimeout:        0,
+						HeartbeatInterval: 0,
+					},
+					Database: config.DatabaseCfg{
+						Filter: config.FilterStruct{
+							Tables: map[string][]string{"users": {"insert"}},
+						},
+					},
+					Nats: config.NatsCfg{
+						TopicPrefix: "pre_",
+					},
+				},
+				slotName:   "myslot",
+				restartLSN: 0,
+			},
+			args: args{
+				timeout: 30 * time.Millisecond,
+			},
+		},
+		{
+			name: "publish err",
+			setup: func() {
+				setStartReplication(
+					nil,
+					"myslot",
+					uint64(0),
+					int64(-1),
+					protoVersion,
+					"publication_names 'sport'",
+				)
+				setWaitForReplicationMessage(
+					&pgx.ReplicationMessage{
+						WalMessage: &pgx.WalMessage{
+							WalStart:     10,
+							ServerWalEnd: 0,
+							ServerTime:   0,
+							WalData:      []byte(`some bytes`),
+						},
+						ServerHeartbeat: &pgx.ServerHeartbeat{
+							ServerWalEnd:   0,
+							ServerTime:     0,
+							ReplyRequested: 1,
+						},
+					},
+					nil,
+				)
+				setParseWalMessageOnce(
+					[]byte(`some bytes`),
+					&WalTransaction{
+						LSN:           0,
+						BeginTime:     nil,
+						CommitTime:    nil,
+						RelationStore: make(map[int32]RelationData),
+						Actions:       nil,
+					},
+					nil,
+				)
+
+				setPublish(
+					"pre_public_users",
+					Event{
+						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
+						Schema:    "public",
+						Table:     "users",
+						Action:    "INSERT",
+						Data:      map[string]interface{}{"id": 1},
+						EventTime: wayback,
+					},
+					someErr,
+				)
+				setSendStandbyStatus(
+					&pgx.StandbyStatus{
+						WalWritePosition: 10,
+						WalFlushPosition: 10,
+						WalApplyPosition: 10,
+						ClientTime:       18445935546232551617,
+						ReplyRequested:   0,
+					},
+					nil,
+				)
+			},
+			fields: fields{
+				config: config.Config{
+					Listener: config.ListenerCfg{
+						SlotName:          "myslot",
+						AckTimeout:        0,
+						HeartbeatInterval: 0,
+					},
+					Database: config.DatabaseCfg{
+						Filter: config.FilterStruct{
+							Tables: map[string][]string{"users": {"insert"}},
+						},
+					},
+					Nats: config.NatsCfg{
+						TopicPrefix: "pre_",
+					},
+				},
+				slotName:   "myslot",
+				restartLSN: 0,
+			},
+			args: args{
+				timeout: 50 * time.Millisecond,
 			},
 		},
 	}
@@ -733,6 +750,7 @@ func TestListener_Stream(t *testing.T) {
 				publisher:  publ,
 				replicator: repl,
 				repository: repo,
+				parser:     prs,
 				LSN:        tt.fields.restartLSN,
 				errChannel: make(chan error, errorBufferSize),
 			}

@@ -195,7 +195,7 @@ func (l *Listener) Stream(ctx context.Context) {
 		if msg != nil {
 			if msg.WalMessage != nil {
 				logrus.WithField("wal", msg.WalMessage.WalStart).
-					Debugln("receive wal message    ")
+					Debugln("receive wal message")
 				err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx)
 				if err != nil {
 					logrus.WithError(err).Errorln("msg parse failed")

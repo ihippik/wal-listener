@@ -81,7 +81,7 @@ func (c *Column) AssertValue(src []byte) {
 func (w *WalTransaction) Clear() {
 	w.CommitTime = nil
 	w.BeginTime = nil
-	w.Actions = []ActionData{}
+	w.Actions = nil
 }
 
 func (w WalTransaction) CreateActionData(
