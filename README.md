@@ -14,7 +14,12 @@ publishing events in a single transaction with a domain model change.
 The service allows you to subscribe to changes in the PostgreSQL database using its logical decoding capability 
 and publish them to the NATS Streaming server.
 
-Inspired after watching https://github.com/hasura/pgdeltastream
+### Logic of work
+To receive events about data changes in our PostgreSQL DB
+  we use the standard logic decoding module (**pgoutput**) This module converts
+ changes read from the WAL into a logical replication protocol.
+  And we already consume all this information on our side.
+Then we filter out only the events we need and publish them in the queue
 
 ### Event publishing
 
@@ -25,21 +30,16 @@ the name of the database and the name of the table `prefix + schema_table`.
 
 ```
 {
-	Schema    string
-	Table     string
-	Action    string
-	Data      map[string]interface{}
+	ID        uuid.UUID   # unique ID           
+	Schema    string                 
+	Table     string                 
+	Action    string                 
+	Data      map[string]interface{} 
+	EventTime time.Time   # commit time          
 }
 ```
 
 Messages are published to Nats-Streaming at least once!
-
-### Restrictions
-
-* DB Postgres must be configured for logical replication and `wal2json` extension installed  
-(use for test `docker run -it -p 5432:5432 debezium/postgres:11`)
-* Tables must have a primary key
-* DDL, truncate and sequences are not replicated
 
 ### Filter configuration example
 
@@ -55,10 +55,15 @@ databases:
 This filter means that we only process events occurring with the `users` table, 
 and in particular `insert` and `update` data.
 
+### DB setting
+You must make the following settings in the db configuration (postgresql.conf)
+* wal_level >= “logical”
+* max_replication_slots >= 1
+
 ### Docker
 
 You can start the container from the project folder (configuration file is required)
 
 ```
-docker run -v $(pwd)/config.yml:/app/config.yml ihippik/wal-listener:master
+docker run -v $(pwd)/config.yml:/app/config.yml ihippik/wal-listener:pgoutput
 ```

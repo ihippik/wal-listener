@@ -1,12 +1,11 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 
-	"github.com/jackc/pgx"
 	"github.com/nats-io/stan.go"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/urfave/cli/v2"
@@ -53,7 +52,8 @@ func main() {
 			}
 			repo := listener.NewRepository(conn)
 			natsPublisher := listener.NewNatsPublisher(sc)
-			service := listener.NewWalListener(cfg, repo, rConn, natsPublisher)
+			parser := listener.NewBinaryParser(binary.BigEndian)
+			service := listener.NewWalListener(cfg, repo, rConn, natsPublisher, parser)
 			return service.Process()
 		},
 	}
@@ -78,52 +78,4 @@ func getConf(path string) (*config.Config, error) {
 	}
 
 	return &cfg, nil
-}
-
-// initPgxConnections initialise db and replication connections.
-func initPgxConnections(cfg config.DatabaseCfg) (*pgx.Conn, *pgx.ReplicationConn, error) {
-	pgxConf := pgx.ConnConfig{
-		Host:     cfg.Host,
-		Port:     cfg.Port,
-		Database: cfg.Name,
-		User:     cfg.User,
-		Password: cfg.Password,
-	}
-	pgConn, err := pgx.Connect(pgxConf)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, listener.ErrPostgresConnection)
-	}
-
-	rConnection, err := pgx.ReplicationConnect(pgxConf)
-	if err != nil {
-		return nil, nil, fmt.Errorf("%v: %w", listener.ErrReplicationConnection, err)
-	}
-	return pgConn, rConnection, nil
-}
-
-// logger log levels.
-const (
-	warningLoggerLevel = "warning"
-	errorLoggerLevel   = "error"
-	fatalLoggerLevel   = "fatal"
-)
-
-// initLogger init logrus preferences.
-func initLogger(cfg config.LoggerCfg) {
-	logrus.SetReportCaller(cfg.Caller)
-	if !cfg.HumanReadable {
-		logrus.SetFormatter(&logrus.JSONFormatter{})
-	}
-	var level logrus.Level
-	switch cfg.Level {
-	case warningLoggerLevel:
-		level = logrus.WarnLevel
-	case errorLoggerLevel:
-		level = logrus.ErrorLevel
-	case fatalLoggerLevel:
-		level = logrus.FatalLevel
-	default:
-		level = logrus.DebugLevel
-	}
-	logrus.SetLevel(level)
 }

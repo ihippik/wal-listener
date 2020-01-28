@@ -6,8 +6,8 @@ type publisherMock struct {
 	mock.Mock
 }
 
-func (p *publisherMock) Publish(subject string, msg []byte) error {
-	args := p.Called(subject, msg)
+func (p *publisherMock) Publish(subject string, event Event) error {
+	args := p.Called(subject, event)
 	return args.Error(0)
 }
 
