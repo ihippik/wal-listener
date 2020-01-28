@@ -14,6 +14,7 @@ require (
 	github.com/jackc/pgproto3/v2 v2.0.0
 	github.com/jackc/pgx v3.6.1+incompatible
 	github.com/kyleconroy/pgoutput v0.1.0
+	github.com/magiconair/properties v1.8.1
 	github.com/mailru/easyjson v0.7.0
 	github.com/nats-io/nats-server/v2 v2.1.2 // indirect
 	github.com/nats-io/nats-streaming-server v0.16.2 // indirect

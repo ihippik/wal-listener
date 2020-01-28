@@ -68,7 +68,7 @@ func (c *Column) AssertValue(src []byte) {
 		val, _ = strconv.Atoi(strSrc)
 	case pgtype.TextOID:
 		val = strSrc
-	case pgtype.TimestampOID:
+	case pgtype.TimestampOID, pgtype.TimestamptzOID:
 		val = strSrc
 	default:
 		logrus.WithField("pgtype", c.valueType).
