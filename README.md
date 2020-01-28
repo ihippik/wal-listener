@@ -41,11 +41,6 @@ the name of the database and the name of the table `prefix + schema_table`.
 
 Messages are published to Nats-Streaming at least once!
 
-### DB setting
-You must make the following settings in the db configuration
-* wal_level >= “logical”
-* max_replication_slots >= 1
-
 ### Filter configuration example
 
 ```yaml
@@ -59,6 +54,11 @@ databases:
 ```
 This filter means that we only process events occurring with the `users` table, 
 and in particular `insert` and `update` data.
+
+### DB setting
+You must make the following settings in the db configuration (postgresql.conf)
+* wal_level >= “logical”
+* max_replication_slots >= 1
 
 ### Docker
 
