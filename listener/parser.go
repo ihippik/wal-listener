@@ -25,8 +25,9 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	if len(msg) == 0 {
 		return errEmptyWALMessage
 	}
+	p.msgType = msg[0]
 	p.buffer = bytes.NewBuffer(msg[1:])
-	switch msg[0] {
+	switch p.msgType {
 	case BeginMsgType:
 		begin := p.getBeginMsg()
 		logrus.
@@ -133,7 +134,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		}
 		tx.Actions = append(tx.Actions, action)
 	default:
-		logrus.Errorf("Unknown message type for %s (%d)", []byte{p.msgType}, p.msgType)
+		return fmt.Errorf("%w : %s", errUnknownMessageType, []byte{p.msgType})
 	}
 	return nil
 }
@@ -261,7 +262,8 @@ func (p *BinaryParser) readTupleData() []TupleData {
 	size := int(p.readInt16())
 	data := make([]TupleData, size)
 	for i := 0; i < size; i++ {
-		switch p.buffer.Next(1)[0] {
+		sl := p.buffer.Next(1)
+		switch sl[0] {
 		case NullDataType:
 			logrus.Debugln("tupleData: null data type")
 		case ToastDataType:

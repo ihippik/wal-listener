@@ -19,6 +19,7 @@ var (
 	errConnectionIsLost     = errors.New("db connection to postgres is lost")
 	errMessageLost          = errors.New("messages are lost")
 	errEmptyWALMessage      = errors.New("empty WAL message")
+	errUnknownMessageType   = errors.New("unknown message type")
 )
 
 type serviceErr struct {
