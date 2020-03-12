@@ -1,11 +1,12 @@
 package listener
 
 import (
-	"github.com/jackc/pgx/pgtype"
-	"github.com/magiconair/properties/assert"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/pgtype"
+	"github.com/magiconair/properties/assert"
 )
 
 func TestWalTransaction_CreateActionData(t *testing.T) {

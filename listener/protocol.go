@@ -5,19 +5,41 @@ import (
 )
 
 const (
-	CommitMsgType   byte = 'C'
-	BeginMsgType    byte = 'B'
-	OriginMsgType   byte = 'O'
-	RelationMsgType byte = 'R'
-	TypeMsgType     byte = 'Y'
-	InsertMsgType   byte = 'I'
-	UpdateMsgType   byte = 'U'
-	DeleteMsgType   byte = 'D'
+	// CommitMsgType protocol commit message type.
+	CommitMsgType byte = 'C'
 
+	// BeginMsgType protocol begin message type.
+	BeginMsgType byte = 'B'
+
+	// OriginMsgType protocol original message type.
+	OriginMsgType byte = 'O'
+
+	// RelationMsgType protocol relation message type.
+	RelationMsgType byte = 'R'
+
+	// TypeMsgType protocol message type.
+	TypeMsgType byte = 'Y'
+
+	// InsertMsgType protocol insert message type.
+	InsertMsgType byte = 'I'
+
+	// UpdateMsgType protocol update message type.
+	UpdateMsgType byte = 'U'
+
+	// DeleteMsgType protocol delete message type.
+	DeleteMsgType byte = 'D'
+
+	// NewTupleDataType protocol new tuple data type.
 	NewTupleDataType byte = 'N'
-	TextDataType     byte = 't'
-	NullDataType     byte = 'n'
-	ToastDataType    byte = 'u'
+
+	// TextDataType protocol test data type.
+	TextDataType byte = 't'
+
+	// NullDataType protocol NULL data type.
+	NullDataType byte = 'n'
+
+	// ToastDataType protocol toast data type.
+	ToastDataType byte = 'u'
 )
 
 var postgresEpoch = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
@@ -25,6 +47,7 @@ var postgresEpoch = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
 // Logical Replication Message Formats.
 // https://postgrespro.ru/docs/postgrespro/10/protocol-logicalrep-message-formats#
 type (
+	// Begin message format.
 	Begin struct {
 		// Identifies the message as a begin message.
 		LSN int64
@@ -34,6 +57,7 @@ type (
 		XID int32
 	}
 
+	// Commit message format.
 	Commit struct {
 		// Flags; currently unused (must be 0).
 		Flags int8
@@ -45,6 +69,7 @@ type (
 		Timestamp time.Time
 	}
 
+	// Origin message format.
 	Origin struct {
 		// The LSN of the commit on the origin server.
 		LSN int64
@@ -52,6 +77,7 @@ type (
 		Name string
 	}
 
+	// Relation message format.
 	Relation struct {
 		// ID of the relation.
 		ID int32
@@ -64,6 +90,7 @@ type (
 		Columns []RelationColumn
 	}
 
+	// Insert message format.
 	Insert struct {
 		/// ID of the relation corresponding to the ID in the relation message.
 		RelationID int32
@@ -73,6 +100,7 @@ type (
 		Row []TupleData
 	}
 
+	// Update message format.
 	Update struct {
 		/// ID of the relation corresponding to the ID in the relation message.
 		RelationID int32
@@ -89,6 +117,7 @@ type (
 		OldRow []TupleData
 	}
 
+	// Delete message format.
 	Delete struct {
 		/// ID of the relation corresponding to the ID in the relation message.
 		RelationID int32
@@ -100,6 +129,8 @@ type (
 		Row []TupleData
 	}
 )
+
+// DataType path of WAL message data.
 type DataType struct {
 	// ID of the data type.
 	ID int32
@@ -109,6 +140,7 @@ type DataType struct {
 	Name string
 }
 
+// RelationColumn path of WAL message data.
 type RelationColumn struct {
 	// Flags for the column which marks the column as part of the key.
 	Key bool
@@ -120,6 +152,7 @@ type RelationColumn struct {
 	ModifierType int32
 }
 
+// TupleData path of WAL message data.
 type TupleData struct {
 	Value []byte
 }

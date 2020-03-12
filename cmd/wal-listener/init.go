@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/ihippik/wal-listener/listener"
 	"github.com/jackc/pgx"
 	"github.com/pkg/errors"

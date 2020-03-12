@@ -11,15 +11,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// ActionKind kind of action on WAL message.
 type ActionKind string
 
-// kind of wall message.
+// kind of WAL message.
 const (
 	ActionKindInsert ActionKind = "INSERT"
 	ActionKindUpdate ActionKind = "UPDATE"
 	ActionKindDelete ActionKind = "DELETE"
 )
 
+// WalTransaction transaction specified WAL message.
 type WalTransaction struct {
 	LSN           int64
 	BeginTime     *time.Time
@@ -28,6 +30,7 @@ type WalTransaction struct {
 	Actions       []ActionData
 }
 
+// NewWalTransaction create and initialize new WAL transaction.
 func NewWalTransaction() *WalTransaction {
 	return &WalTransaction{
 		RelationStore: make(map[int32]RelationData),
@@ -38,12 +41,14 @@ func (k ActionKind) string() string {
 	return string(k)
 }
 
+// RelationData kind of WAL message data.
 type RelationData struct {
 	Schema  string
 	Table   string
 	Columns []Column
 }
 
+// ActionData kind of WAL message data.
 type ActionData struct {
 	Schema  string
 	Table   string
@@ -51,6 +56,7 @@ type ActionData struct {
 	Columns []Column
 }
 
+// Column of the table with which changes occur.
 type Column struct {
 	name      string
 	value     interface{}
@@ -58,6 +64,8 @@ type Column struct {
 	isKey     bool
 }
 
+// AssertValue converts bytes to a specific type depending
+// on the type of this data in the database table.
 func (c *Column) AssertValue(src []byte) {
 	var val interface{}
 	strSrc := string(src)
@@ -78,12 +86,14 @@ func (c *Column) AssertValue(src []byte) {
 	c.value = val
 }
 
+// Clear transaction data.
 func (w *WalTransaction) Clear() {
 	w.CommitTime = nil
 	w.BeginTime = nil
 	w.Actions = nil
 }
 
+// CreateActionData create action  from WAL message data.
 func (w WalTransaction) CreateActionData(
 	relationID int32,
 	rows []TupleData,
@@ -113,7 +123,8 @@ func (w WalTransaction) CreateActionData(
 	return a, nil
 }
 
-// CreateEventsWithFilter filter wal message by table, action and create events for each value.
+// CreateEventsWithFilter filter WAL message by table,
+// action and create events for each value.
 func (w *WalTransaction) CreateEventsWithFilter(
 	tableMap map[string][]string) []Event {
 	var events []Event
@@ -149,10 +160,10 @@ func (w *WalTransaction) CreateEventsWithFilter(
 	return events
 }
 
-// inArray checks whether the value is in an array
+// inArray checks whether the value is in an array.
 func inArray(arr []string, value string) bool {
 	for _, v := range arr {
-		if strings.ToLower(v) == strings.ToLower(value) {
+		if strings.EqualFold(v, value) {
 			return true
 		}
 	}

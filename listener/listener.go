@@ -65,6 +65,7 @@ type Listener struct {
 	errChannel chan error
 }
 
+// NewWalListener create and initialize new service instance.
 func NewWalListener(
 	cfg *config.Config,
 	repo repository,
@@ -88,23 +89,27 @@ func (l *Listener) Process() error {
 	var serviceErr *serviceErr
 	logger := logrus.WithField("slot_name", l.slotName)
 	ctx, cancelFunc := context.WithCancel(context.Background())
+	defer cancelFunc()
 	logrus.WithField("logger_level", l.config.Logger.Level).Infoln(StartServiceMessage)
 
 	slotIsExists, err := l.slotIsExists()
 	if err != nil {
+		logger.WithError(err).Errorln("slotIsExists() error")
 		return err
 	}
 
 	if !slotIsExists {
 		consistentPoint, _, err := l.replicator.CreateReplicationSlotEx(l.slotName, pgoutputPlugin)
 		if err != nil {
+			logger.WithError(err).Infoln("CreateReplicationSlotEx() error")
 			return err
 		}
 		l.LSN, err = pgx.ParseLSN(consistentPoint)
-		logger.Infoln("create new slot")
 		if err != nil {
+			logger.WithError(err).Errorln("slotIsExists() error")
 			return err
 		}
+		logger.Infoln("create new slot")
 	} else {
 		logger.Infoln("slot already exists, LSN updated")
 	}
@@ -113,11 +118,11 @@ func (l *Listener) Process() error {
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	refresh := time.Tick(l.config.Listener.RefreshConnection)
+	refresh := time.NewTicker(l.config.Listener.RefreshConnection)
 ProcessLoop:
 	for {
 		select {
-		case <-refresh:
+		case <-refresh.C:
 			if !l.replicator.IsAlive() {
 				logrus.Fatalln(errReplConnectionIsLost)
 			}
@@ -134,10 +139,9 @@ ProcessLoop:
 			}
 
 		case <-signalChan:
-			cancelFunc()
 			err := l.Stop()
 			if err != nil {
-				logrus.Errorln(err)
+				logrus.WithError(err).Errorln("l.Stop() error")
 			}
 			break ProcessLoop
 		}
@@ -150,6 +154,9 @@ func (l *Listener) slotIsExists() (bool, error) {
 	restartLSNStr, err := l.repository.GetSlotLSN(l.slotName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			logrus.
+				WithField("slot", l.slotName).
+				Warningln("restart_lsn for slot not found")
 			return false, nil
 		}
 		return false, err
@@ -268,7 +275,7 @@ func (l *Listener) Stop() error {
 	return nil
 }
 
-// SendPeriodicHeartbeats send periodic keep alive hearbeats to the server.
+// SendPeriodicHeartbeats send periodic keep alive heartbeats to the server.
 func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 	for {
 		select {
@@ -276,7 +283,7 @@ func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 			logrus.WithField("func", "SendPeriodicHeartbeats").
 				Infoln("context was canceled, stop sending heartbeats")
 			return
-		case <-time.Tick(l.config.Listener.HeartbeatInterval):
+		case <-time.NewTicker(l.config.Listener.HeartbeatInterval).C:
 			{
 				err := l.SendStandbyStatus()
 				if err != nil {

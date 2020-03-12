@@ -10,10 +10,12 @@ import (
 
 //go:generate  easyjson nats_publisher.go
 
+// NatsPublisher represent event publisher.
 type NatsPublisher struct {
 	conn stan.Conn
 }
 
+// Close NATS connection.
 func (n NatsPublisher) Close() error {
 	return n.conn.Close()
 }
@@ -29,6 +31,7 @@ type Event struct {
 	EventTime time.Time              `json:"commitTime"`
 }
 
+// Publish serializes the event and publishes it on the bus.
 func (n NatsPublisher) Publish(subject string, event Event) error {
 	msg, err := event.MarshalJSON()
 	if err != nil {
@@ -37,6 +40,7 @@ func (n NatsPublisher) Publish(subject string, event Event) error {
 	return n.conn.Publish(subject, msg)
 }
 
+// NewNatsPublisher return new NatsPublisher instance.
 func NewNatsPublisher(conn stan.Conn) *NatsPublisher {
 	return &NatsPublisher{conn: conn}
 }

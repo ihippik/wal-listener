@@ -2,15 +2,18 @@ package listener
 
 import "github.com/jackc/pgx"
 
-type repositoryImpl struct {
+// RepositoryImpl service repository.
+type RepositoryImpl struct {
 	conn *pgx.Conn
 }
 
-func NewRepository(conn *pgx.Conn) *repositoryImpl {
-	return &repositoryImpl{conn: conn}
+// NewRepository returns a new instance of the repository.
+func NewRepository(conn *pgx.Conn) *RepositoryImpl {
+	return &RepositoryImpl{conn: conn}
 }
 
-func (r repositoryImpl) GetSlotLSN(slotName string) (string, error) {
+// GetSlotLSN returns the value of the last offset for a specific slot.
+func (r RepositoryImpl) GetSlotLSN(slotName string) (string, error) {
 	var restartLSNStr string
 	err := r.conn.QueryRow(
 		"SELECT restart_lsn FROM pg_replication_slots WHERE slot_name=$1;",
@@ -19,10 +22,12 @@ func (r repositoryImpl) GetSlotLSN(slotName string) (string, error) {
 	return restartLSNStr, err
 }
 
-func (r repositoryImpl) IsAlive() bool {
+// IsAlive check database connection problems.
+func (r RepositoryImpl) IsAlive() bool {
 	return r.conn.IsAlive()
 }
 
-func (r repositoryImpl) Close() error {
+// Close database connection.
+func (r RepositoryImpl) Close() error {
 	return r.conn.Close()
 }

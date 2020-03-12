@@ -9,18 +9,21 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// BinaryParser represent binary protocol parser.
 type BinaryParser struct {
 	byteOrder binary.ByteOrder
 	msgType   byte
 	buffer    *bytes.Buffer
 }
 
+// NewBinaryParser create instance of binary parser.
 func NewBinaryParser(byteOrder binary.ByteOrder) *BinaryParser {
 	return &BinaryParser{
 		byteOrder: byteOrder,
 	}
 }
 
+// ParseWalMessage parse postgres WAL message.
 func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	if len(msg) == 0 {
 		return errEmptyWALMessage
@@ -238,10 +241,9 @@ func (p *BinaryParser) readBool() bool {
 func (p *BinaryParser) charIsExists(char byte) bool {
 	if p.buffer.Next(1)[0] == char {
 		return true
-	} else {
-		_ = p.buffer.UnreadByte()
-		return false
 	}
+	_ = p.buffer.UnreadByte()
+	return false
 }
 
 func (p *BinaryParser) readColumns() []RelationColumn {

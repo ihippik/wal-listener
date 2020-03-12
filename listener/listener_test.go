@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"bou.ke/monkey"
 	"github.com/jackc/pgx"
@@ -17,7 +17,7 @@ import (
 	"github.com/ihippik/wal-listener/config"
 )
 
-var someErr = errors.New("some err")
+var errSimple = errors.New("some err")
 
 func TestListener_slotIsExists(t *testing.T) {
 	repo := new(repositoryMock)
@@ -84,7 +84,7 @@ func TestListener_slotIsExists(t *testing.T) {
 		{
 			name: "repository error",
 			setup: func() {
-				setGetSlotLSN("myslot", "", someErr)
+				setGetSlotLSN("myslot", "", errSimple)
 			},
 			fields: fields{
 				slotName: "myslot",
@@ -194,7 +194,6 @@ func TestListener_Stop(t *testing.T) {
 func TestListener_SendStandbyStatus(t *testing.T) {
 	repl := new(replicatorMock)
 	type fields struct {
-		status     *pgx.StandbyStatus
 		restartLSN uint64
 	}
 
@@ -236,7 +235,7 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "success",
+			name: "some err",
 			setup: func() {
 				setSendStandbyStatus(
 					&pgx.StandbyStatus{
@@ -246,7 +245,7 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 						ClientTime:       18445935546232551617,
 						ReplyRequested:   0,
 					},
-					someErr,
+					errSimple,
 				)
 			},
 			fields: fields{
@@ -331,7 +330,7 @@ func TestListener_AckWalMessage(t *testing.T) {
 						ClientTime:       18445935546232551617,
 						ReplyRequested:   0,
 					},
-					someErr,
+					errSimple,
 				)
 			},
 			fields: fields{
@@ -360,7 +359,7 @@ func TestListener_AckWalMessage(t *testing.T) {
 }
 
 func TestListener_Stream(t *testing.T) {
-	logrus.SetLevel(logrus.FatalLevel)
+	//logrus.SetLevel(logrus.FatalLevel)
 	repo := new(repositoryMock)
 	publ := new(publisherMock)
 	repl := new(replicatorMock)
@@ -433,6 +432,16 @@ func TestListener_Stream(t *testing.T) {
 				)
 				setSendStandbyStatus(
 					&pgx.StandbyStatus{
+						WalWritePosition: 0,
+						WalFlushPosition: 0,
+						WalApplyPosition: 0,
+						ClientTime:       18445935546232551617,
+						ReplyRequested:   0,
+					},
+					nil,
+				)
+				setSendStandbyStatus(
+					&pgx.StandbyStatus{
 						WalWritePosition: 10,
 						WalFlushPosition: 10,
 						WalApplyPosition: 10,
@@ -488,7 +497,7 @@ func TestListener_Stream(t *testing.T) {
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
-						HeartbeatInterval: 0,
+						HeartbeatInterval: 1,
 					},
 					Database: config.DatabaseCfg{
 						Filter: config.FilterStruct{
@@ -510,7 +519,7 @@ func TestListener_Stream(t *testing.T) {
 			name: "start replication err",
 			setup: func() {
 				setStartReplication(
-					someErr,
+					errSimple,
 					"myslot",
 					uint64(0),
 					int64(-1),
@@ -523,7 +532,7 @@ func TestListener_Stream(t *testing.T) {
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
-						HeartbeatInterval: 0,
+						HeartbeatInterval: 1,
 					},
 					Database: config.DatabaseCfg{
 						Filter: config.FilterStruct{
@@ -552,6 +561,16 @@ func TestListener_Stream(t *testing.T) {
 					protoVersion,
 					"publication_names 'sport'",
 				)
+				setSendStandbyStatus(
+					&pgx.StandbyStatus{
+						WalWritePosition: 0,
+						WalFlushPosition: 0,
+						WalApplyPosition: 0,
+						ClientTime:       18445935546232551617,
+						ReplyRequested:   0,
+					},
+					nil,
+				)
 				setWaitForReplicationMessage(
 					&pgx.ReplicationMessage{
 						WalMessage: &pgx.WalMessage{
@@ -566,7 +585,7 @@ func TestListener_Stream(t *testing.T) {
 							ReplyRequested: 1,
 						},
 					},
-					someErr,
+					errSimple,
 				)
 			},
 			fields: fields{
@@ -574,7 +593,7 @@ func TestListener_Stream(t *testing.T) {
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
-						HeartbeatInterval: 0,
+						HeartbeatInterval: 1,
 					},
 					Database: config.DatabaseCfg{
 						Filter: config.FilterStruct{
@@ -603,6 +622,16 @@ func TestListener_Stream(t *testing.T) {
 					protoVersion,
 					"publication_names 'sport'",
 				)
+				setSendStandbyStatus(
+					&pgx.StandbyStatus{
+						WalWritePosition: 0,
+						WalFlushPosition: 0,
+						WalApplyPosition: 0,
+						ClientTime:       18445935546232551617,
+						ReplyRequested:   0,
+					},
+					nil,
+				)
 				setWaitForReplicationMessage(
 					&pgx.ReplicationMessage{
 						WalMessage: &pgx.WalMessage{
@@ -628,7 +657,7 @@ func TestListener_Stream(t *testing.T) {
 						RelationStore: make(map[int32]RelationData),
 						Actions:       nil,
 					},
-					someErr,
+					errSimple,
 				)
 			},
 			fields: fields{
@@ -636,7 +665,7 @@ func TestListener_Stream(t *testing.T) {
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
-						HeartbeatInterval: 0,
+						HeartbeatInterval: 1,
 					},
 					Database: config.DatabaseCfg{
 						Filter: config.FilterStruct{
@@ -664,6 +693,26 @@ func TestListener_Stream(t *testing.T) {
 					int64(-1),
 					protoVersion,
 					"publication_names 'sport'",
+				)
+				setSendStandbyStatus(
+					&pgx.StandbyStatus{
+						WalWritePosition: 10,
+						WalFlushPosition: 10,
+						WalApplyPosition: 10,
+						ClientTime:       18445935546232551617,
+						ReplyRequested:   0,
+					},
+					nil,
+				)
+				setSendStandbyStatus(
+					&pgx.StandbyStatus{
+						WalWritePosition: 0,
+						WalFlushPosition: 0,
+						WalApplyPosition: 0,
+						ClientTime:       18445935546232551617,
+						ReplyRequested:   0,
+					},
+					nil,
 				)
 				setWaitForReplicationMessage(
 					&pgx.ReplicationMessage{
@@ -703,7 +752,7 @@ func TestListener_Stream(t *testing.T) {
 						Data:      map[string]interface{}{"id": 1},
 						EventTime: wayback,
 					},
-					someErr,
+					errSimple,
 				)
 				setSendStandbyStatus(
 					&pgx.StandbyStatus{
@@ -721,7 +770,7 @@ func TestListener_Stream(t *testing.T) {
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
-						HeartbeatInterval: 0,
+						HeartbeatInterval: 1,
 					},
 					Database: config.DatabaseCfg{
 						Filter: config.FilterStruct{
@@ -757,7 +806,6 @@ func TestListener_Stream(t *testing.T) {
 			go func() {
 				<-w.errChannel
 				cancel()
-
 			}()
 			w.Stream(ctx)
 			repl.AssertExpectations(t)
