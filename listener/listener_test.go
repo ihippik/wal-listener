@@ -259,7 +259,7 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 			tt.setup()
 			w := &Listener{
 				replicator: repl,
-				LSN:        tt.fields.restartLSN,
+				lsn:        tt.fields.restartLSN,
 			}
 			if err := w.SendStandbyStatus(); (err != nil) != tt.wantErr {
 				t.Errorf("SendStandbyStatus() error = %v, wantErr %v", err, tt.wantErr)
@@ -347,7 +347,7 @@ func TestListener_AckWalMessage(t *testing.T) {
 			tt.setup()
 			w := &Listener{
 				replicator: repl,
-				LSN:        tt.fields.restartLSN,
+				lsn:        tt.fields.restartLSN,
 			}
 			if err := w.AckWalMessage(tt.args.LSN); (err != nil) != tt.wantErr {
 				t.Errorf("AckWalMessage() error = %v, wantErr %v", err, tt.wantErr)
@@ -800,7 +800,7 @@ func TestListener_Stream(t *testing.T) {
 				replicator: repl,
 				repository: repo,
 				parser:     prs,
-				LSN:        tt.fields.restartLSN,
+				lsn:        tt.fields.restartLSN,
 				errChannel: make(chan error, errorBufferSize),
 			}
 			go func() {
