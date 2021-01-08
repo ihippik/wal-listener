@@ -22,6 +22,12 @@ func (r RepositoryImpl) GetSlotLSN(slotName string) (string, error) {
 	return restartLSNStr, err
 }
 
+// CreatePublication create publication fo all.
+func (r RepositoryImpl) CreatePublication(name string) error {
+	_, err := r.conn.Exec(`CREATE PUBLICATION "` + name + `" FOR ALL TABLES`)
+	return err
+}
+
 // IsAlive check database connection problems.
 func (r RepositoryImpl) IsAlive() bool {
 	return r.conn.IsAlive()

@@ -49,6 +49,7 @@ type replication interface {
 }
 
 type repository interface {
+	CreatePublication(name string) error
 	GetSlotLSN(slotName string) (string, error)
 	IsAlive() bool
 	Close() error
@@ -104,7 +105,11 @@ func (l *Listener) Process() error {
 	logger := logrus.WithField("slot_name", l.slotName)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
-	logrus.WithField("logger_level", l.config.Logger.Level).Infoln(StartServiceMessage)
+	logger.WithField("logger_level", l.config.Logger.Level).Infoln(StartServiceMessage)
+
+	if err := l.repository.CreatePublication(publicationName); err != nil {
+		logger.WithError(err).Warnln("skip create publication")
+	}
 
 	slotIsExists, err := l.slotIsExists()
 	if err != nil {
@@ -191,12 +196,15 @@ func publicationNames(publication string) string {
 	return fmt.Sprintf(`publication_names '%s'`, publication)
 }
 
-const protoVersion = "proto_version '1'"
+const (
+	protoVersion    = "proto_version '1'"
+	publicationName = "wal-listener"
+)
 
 // Stream receive event from PostgreSQL.
 // Accept message, apply filter and  publish it in NATS server.
 func (l *Listener) Stream(ctx context.Context) {
-	err := l.replicator.StartReplication(l.slotName, l.readLSN(), -1, protoVersion, publicationNames("sport"))
+	err := l.replicator.StartReplication(l.slotName, l.readLSN(), -1, protoVersion, publicationNames(publicationName))
 	if err != nil {
 		l.errChannel <- newListenerError("StartReplication()", err)
 		return

@@ -1,6 +1,5 @@
 listener:
-  slotName: myslot_2
-  ackTimeout: 10s
+  slotName: myslot_1
   refreshConnection: 30s
   heartbeatInterval: 10s
 logger:
@@ -8,15 +7,18 @@ logger:
   level: info
   humanReadable: true
 database:
-  host: 81.90.180.219
+  host: localhost
   port: 5432
-  name: scum_db
-  user: pglogrepl
+  name: test_db
+  user: back
   debug: false
-  password: secret
+  password: pass
   filter:
     tables:
-      table_name:
+      users:
+        - insert
+        - update
+      city:
         - insert
         - update
 nats:

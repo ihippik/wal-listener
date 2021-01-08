@@ -428,7 +428,7 @@ func TestListener_Stream(t *testing.T) {
 					uint64(0),
 					int64(-1),
 					protoVersion,
-					"publication_names 'sport'",
+					"publication_names 'wal-listener'",
 				)
 				setSendStandbyStatus(
 					&pgx.StandbyStatus{
@@ -524,7 +524,7 @@ func TestListener_Stream(t *testing.T) {
 					uint64(0),
 					int64(-1),
 					protoVersion,
-					"publication_names 'sport'",
+					"publication_names 'wal-listener'",
 				)
 			},
 			fields: fields{
@@ -559,7 +559,7 @@ func TestListener_Stream(t *testing.T) {
 					uint64(0),
 					int64(-1),
 					protoVersion,
-					"publication_names 'sport'",
+					"publication_names 'wal-listener'",
 				)
 				setSendStandbyStatus(
 					&pgx.StandbyStatus{
@@ -620,7 +620,7 @@ func TestListener_Stream(t *testing.T) {
 					uint64(0),
 					int64(-1),
 					protoVersion,
-					"publication_names 'sport'",
+					"publication_names 'wal-listener'",
 				)
 				setSendStandbyStatus(
 					&pgx.StandbyStatus{
@@ -692,7 +692,7 @@ func TestListener_Stream(t *testing.T) {
 					uint64(0),
 					int64(-1),
 					protoVersion,
-					"publication_names 'sport'",
+					"publication_names 'wal-listener'",
 				)
 				setSendStandbyStatus(
 					&pgx.StandbyStatus{

@@ -18,3 +18,7 @@ func (r *repositoryMock) IsAlive() bool {
 func (r *repositoryMock) Close() error {
 	return r.Called().Error(0)
 }
+
+func (r *repositoryMock) CreatePublication(name string) (err error) {
+	panic("implement me")
+}
