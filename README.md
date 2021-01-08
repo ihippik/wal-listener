@@ -60,6 +60,12 @@ You must make the following settings in the db configuration (postgresql.conf)
 * wal_level >= “logical”
 * max_replication_slots >= 1
 
+The publication & slot created automatically when the service starts (for all tables and all actions). 
+You can delete the default publication and create your own (name: _wal-listener_) with the necessary filtering conditions, and then the filtering will occur at the database level and not at the application level.
+https://www.postgresql.org/docs/current/sql-createpublication.html
+
+If you change the publication, do not forget to change the slot name or delete the current one.
+
 ### Docker
 
 You can start the container from the project folder (configuration file is required)
