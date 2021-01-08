@@ -68,13 +68,17 @@ type Column struct {
 // on the type of this data in the database table.
 func (c *Column) AssertValue(src []byte) {
 	var val interface{}
+	if src == nil {
+		c.value = nil
+		return
+	}
 	strSrc := string(src)
 	switch c.valueType {
 	case pgtype.BoolOID:
 		val, _ = strconv.ParseBool(strSrc)
 	case pgtype.Int4OID:
 		val, _ = strconv.Atoi(strSrc)
-	case pgtype.TextOID:
+	case pgtype.TextOID, pgtype.VarcharOID:
 		val = strSrc
 	case pgtype.TimestampOID, pgtype.TimestamptzOID:
 		val = strSrc
@@ -116,7 +120,6 @@ func (w WalTransaction) CreateActionData(
 			isKey:     rel.Columns[num].isKey,
 		}
 		column.AssertValue(row.Value)
-
 		columns = append(columns, column)
 	}
 	a.Columns = columns
