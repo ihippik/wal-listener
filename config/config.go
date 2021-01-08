@@ -16,8 +16,8 @@ type Config struct {
 
 // ListenerCfg path of the listener config.
 type ListenerCfg struct {
-	SlotName          string        `valid:"required"`
-	AckTimeout        time.Duration `valid:"required"`
+	SlotName          string `valid:"required"`
+	AckTimeout        time.Duration
 	RefreshConnection time.Duration `valid:"required"`
 	HeartbeatInterval time.Duration `valid:"required"`
 }
