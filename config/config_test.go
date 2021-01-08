@@ -63,7 +63,7 @@ func TestConfig_Validate(t *testing.T) {
 					TopicPrefix: "prefix",
 				},
 			},
-			wantErr: errors.New("Listener.SlotName: non zero value required;Listener.AckTimeout: non zero value required;Listener.RefreshConnection: non zero value required"),
+			wantErr: errors.New("Listener.SlotName: non zero value required;Listener.RefreshConnection: non zero value required"),
 		},
 		{
 			name: "bad db cfg",
