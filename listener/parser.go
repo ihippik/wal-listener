@@ -28,8 +28,10 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	if len(msg) == 0 {
 		return errEmptyWALMessage
 	}
+
 	p.msgType = msg[0]
 	p.buffer = bytes.NewBuffer(msg[1:])
+
 	switch p.msgType {
 	case BeginMsgType:
 		begin := p.getBeginMsg()
@@ -51,9 +53,11 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 					"transaction_lsn": commit.TransactionLSN,
 				}).
 			Infoln("receive commit message")
+
 		if tx.LSN > 0 && tx.LSN != commit.LSN {
 			return fmt.Errorf("commit: %w", errMessageLost)
 		}
+
 		tx.CommitTime = &commit.Timestamp
 	case OriginMsgType:
 		logrus.Infoln("receive origin message")
@@ -66,13 +70,16 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 					"replica":     relation.Replica,
 				}).
 			Infoln("receive relation message")
+
 		if tx.LSN == 0 {
 			return fmt.Errorf("commit: %w", errMessageLost)
 		}
+
 		rd := RelationData{
 			Schema: relation.Namespace,
 			Table:  relation.Name,
 		}
+
 		for _, rf := range relation.Columns {
 			c := Column{
 				name:      rf.Name,
@@ -81,6 +88,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 			}
 			rd.Columns = append(rd.Columns, c)
 		}
+
 		tx.RelationStore[relation.ID] = rd
 
 	case TypeMsgType:
@@ -93,6 +101,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 					"relation_id": insert.RelationID,
 				}).
 			Infoln("receive insert message")
+
 		action, err := tx.CreateActionData(
 			insert.RelationID,
 			insert.Row,
@@ -101,6 +110,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		if err != nil {
 			return fmt.Errorf("create action data: %w", err)
 		}
+
 		tx.Actions = append(tx.Actions, action)
 	case UpdateMsgType:
 		upd := p.getUpdateMsg()
@@ -110,6 +120,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 					"relation_id": upd.RelationID,
 				}).
 			Infoln("receive update message")
+
 		action, err := tx.CreateActionData(
 			upd.RelationID,
 			upd.Row,
@@ -118,6 +129,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		if err != nil {
 			return fmt.Errorf("create action data: %w", err)
 		}
+
 		tx.Actions = append(tx.Actions, action)
 	case DeleteMsgType:
 		del := p.getDeleteMsg()
@@ -127,6 +139,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 					"relation_id": del.RelationID,
 				}).
 			Infoln("receive delete message")
+
 		action, err := tx.CreateActionData(
 			del.RelationID,
 			del.Row,
@@ -135,6 +148,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		if err != nil {
 			return fmt.Errorf("create action data: %w", err)
 		}
+
 		tx.Actions = append(tx.Actions, action)
 	default:
 		return fmt.Errorf("%w : %s", errUnknownMessageType, []byte{p.msgType})
@@ -184,8 +198,10 @@ func (p *BinaryParser) getUpdateMsg() Update {
 	if u.KeyTuple || u.OldTuple {
 		u.OldRow = p.readTupleData()
 	}
+
 	u.OldTuple = p.charIsExists('N')
 	u.Row = p.readTupleData()
+
 	return u
 }
 
@@ -202,39 +218,46 @@ func (p *BinaryParser) getRelationMsg() Relation {
 func (p *BinaryParser) readInt32() (val int32) {
 	r := bytes.NewReader(p.buffer.Next(4))
 	_ = binary.Read(r, p.byteOrder, &val)
+
 	return
 }
 
 func (p *BinaryParser) readInt64() (val int64) {
 	r := bytes.NewReader(p.buffer.Next(8))
 	_ = binary.Read(r, p.byteOrder, &val)
+
 	return
 }
 
 func (p *BinaryParser) readInt8() (val int8) {
 	r := bytes.NewReader(p.buffer.Next(1))
 	_ = binary.Read(r, p.byteOrder, &val)
+
 	return
 }
 
 func (p *BinaryParser) readInt16() (val int16) {
 	r := bytes.NewReader(p.buffer.Next(2))
 	_ = binary.Read(r, p.byteOrder, &val)
+
 	return
 }
 
 func (p *BinaryParser) readTimestamp() time.Time {
 	ns := p.readInt64()
+
 	return postgresEpoch.Add(time.Duration(ns) * time.Microsecond)
 }
 
 func (p *BinaryParser) readString() (str string) {
 	stringBytes, _ := p.buffer.ReadBytes(0)
+
 	return string(bytes.Trim(stringBytes, "\x00"))
 }
 
 func (p *BinaryParser) readBool() bool {
 	x := p.buffer.Next(1)[0]
+
 	return x != 0
 }
 
@@ -243,12 +266,14 @@ func (p *BinaryParser) charIsExists(char byte) bool {
 		return true
 	}
 	_ = p.buffer.UnreadByte()
+
 	return false
 }
 
 func (p *BinaryParser) readColumns() []RelationColumn {
 	size := int(p.readInt16())
 	data := make([]RelationColumn, size)
+
 	for i := 0; i < size; i++ {
 		data[i] = RelationColumn{
 			Key:          p.readBool(),
@@ -257,14 +282,17 @@ func (p *BinaryParser) readColumns() []RelationColumn {
 			ModifierType: p.readInt32(),
 		}
 	}
+
 	return data
 }
 
 func (p *BinaryParser) readTupleData() []TupleData {
 	size := int(p.readInt16())
 	data := make([]TupleData, size)
+
 	for i := 0; i < size; i++ {
 		sl := p.buffer.Next(1)
+
 		switch sl[0] {
 		case NullDataType:
 			logrus.Debugln("tupleData: null data type")
@@ -276,5 +304,6 @@ func (p *BinaryParser) readTupleData() []TupleData {
 			data[i] = TupleData{Value: p.buffer.Next(vsize)}
 		}
 	}
+
 	return data
 }

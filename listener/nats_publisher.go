@@ -37,6 +37,7 @@ func (n NatsPublisher) Publish(subject string, event Event) error {
 	if err != nil {
 		return fmt.Errorf("marshal err: %w", err)
 	}
+
 	return n.conn.Publish(subject, msg)
 }
 

@@ -7,10 +7,8 @@ import (
 
 	"github.com/nats-io/stan.go"
 	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 	"github.com/urfave/cli/v2"
 
-	"github.com/ihippik/wal-listener/config"
 	"github.com/ihippik/wal-listener/listener"
 )
 
@@ -18,6 +16,12 @@ import (
 var version = "0.1.0"
 
 func main() {
+	cli.VersionFlag = &cli.BoolFlag{
+		Name:    "version",
+		Aliases: []string{"v"},
+		Usage:   "print only the version",
+	}
+
 	app := &cli.App{
 		Name:    "Wal-Listener",
 		Usage:   "listen postgres events",
@@ -33,49 +37,42 @@ func main() {
 		Action: func(c *cli.Context) error {
 			cfg, err := getConf(c.String("config"))
 			if err != nil {
-				logrus.WithError(err).Fatalln("getConf error")
+				return fmt.Errorf("get config: %w", err)
 			}
+
 			if err = cfg.Validate(); err != nil {
-				logrus.WithError(err).Fatalln("validate config error")
+				return fmt.Errorf("validate config: %w", err)
 			}
 
 			initLogger(cfg.Logger)
 
 			sc, err := stan.Connect(cfg.Nats.ClusterID, cfg.Nats.ClientID, stan.NatsURL(cfg.Nats.Address))
 			if err != nil {
-				logrus.WithError(err).Fatalln(listener.ErrNatsConnection)
+				return fmt.Errorf("nats connection: %w", err)
 			}
 
 			conn, rConn, err := initPgxConnections(cfg.Database)
 			if err != nil {
-				logrus.Fatal(err)
+				return fmt.Errorf("pgx connection: %w", err)
 			}
-			repo := listener.NewRepository(conn)
-			natsPublisher := listener.NewNatsPublisher(sc)
-			parser := listener.NewBinaryParser(binary.BigEndian)
-			service := listener.NewWalListener(cfg, repo, rConn, natsPublisher, parser)
-			return service.Process()
+
+			service := listener.NewWalListener(
+				cfg,
+				listener.NewRepository(conn),
+				rConn,
+				listener.NewNatsPublisher(sc),
+				listener.NewBinaryParser(binary.BigEndian),
+			)
+
+			if err := service.Process(); err != nil {
+				return fmt.Errorf("service process: %w", err)
+			}
+
+			return nil
 		},
 	}
-	err := app.Run(os.Args)
-	if err != nil {
+
+	if err := app.Run(os.Args); err != nil {
 		logrus.Fatal(err)
 	}
-}
-
-// getConf load config from file.
-func getConf(path string) (*config.Config, error) {
-	var cfg config.Config
-	viper.SetConfigFile(path)
-	err := viper.ReadInConfig()
-	if err != nil {
-		return nil, fmt.Errorf("error reading config: %w", err)
-	}
-
-	err = viper.Unmarshal(&cfg)
-	if err != nil {
-		return nil, fmt.Errorf("unable to decode into config struct: %w", err)
-	}
-
-	return &cfg, nil
 }

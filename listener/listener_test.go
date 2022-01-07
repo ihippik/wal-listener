@@ -154,14 +154,14 @@ func TestListener_Stop(t *testing.T) {
 				setPublClose(nil)
 				setRepoClose(errors.New("repo err"))
 			},
-			wantErr: errors.New("repo err"),
+			wantErr: errors.New("repository close: repo err"),
 		},
 		{
 			name: "publication error",
 			setup: func() {
 				setPublClose(errors.New("publication err"))
 			},
-			wantErr: errors.New("publication err"),
+			wantErr: errors.New("publisher close: publication err"),
 		},
 		{
 			name: "replication error",
@@ -170,7 +170,7 @@ func TestListener_Stop(t *testing.T) {
 				setRepoClose(nil)
 				setPublClose(nil)
 			},
-			wantErr: errors.New("replication err"),
+			wantErr: errors.New("replicator close: replication err"),
 		},
 	}
 	for _, tt := range tests {
@@ -182,7 +182,9 @@ func TestListener_Stop(t *testing.T) {
 				repository: repo,
 			}
 			err := w.Stop()
-			assert.Equal(t, tt.wantErr, err)
+			if err != nil && assert.Error(t, tt.wantErr) {
+				assert.EqualError(t, err, tt.wantErr.Error())
+			}
 
 			repo.AssertExpectations(t)
 			repl.AssertExpectations(t)
@@ -359,16 +361,17 @@ func TestListener_AckWalMessage(t *testing.T) {
 }
 
 func TestListener_Stream(t *testing.T) {
-	//logrus.SetLevel(logrus.FatalLevel)
 	repo := new(repositoryMock)
 	publ := new(publisherMock)
 	repl := new(replicatorMock)
 	prs := new(parserMock)
+
 	type fields struct {
 		config     config.Config
 		slotName   string
 		restartLSN uint64
 	}
+
 	type args struct {
 		timeout time.Duration
 	}
@@ -792,6 +795,7 @@ func TestListener_Stream(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
+
 			ctx, cancel := context.WithTimeout(context.Background(), tt.args.timeout)
 			w := &Listener{
 				config:     tt.fields.config,
@@ -803,11 +807,14 @@ func TestListener_Stream(t *testing.T) {
 				lsn:        tt.fields.restartLSN,
 				errChannel: make(chan error, errorBufferSize),
 			}
+
 			go func() {
 				<-w.errChannel
 				cancel()
 			}()
+
 			w.Stream(ctx)
+
 			repl.AssertExpectations(t)
 			repl.ExpectedCalls = nil
 		})

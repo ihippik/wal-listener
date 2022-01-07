@@ -134,9 +134,11 @@ func (w *WalTransaction) CreateEventsWithFilter(
 
 	for _, item := range w.Actions {
 		data := make(map[string]interface{})
+
 		for _, val := range item.Columns {
 			data[val.name] = val.value
 		}
+
 		event := Event{
 			ID:        uuid.New(),
 			Schema:    item.Schema,
@@ -147,6 +149,7 @@ func (w *WalTransaction) CreateEventsWithFilter(
 		}
 
 		actions, validTable := tableMap[item.Table]
+
 		validAction := inArray(actions, item.Kind.string())
 		if validTable && validAction {
 			events = append(events, event)
@@ -160,6 +163,7 @@ func (w *WalTransaction) CreateEventsWithFilter(
 				Infoln("wal message skip by filter")
 		}
 	}
+
 	return events
 }
 
@@ -170,5 +174,6 @@ func inArray(arr []string, value string) bool {
 			return true
 		}
 	}
+
 	return false
 }

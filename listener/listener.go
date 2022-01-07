@@ -207,16 +207,19 @@ func (l *Listener) Stream(ctx context.Context) {
 	err := l.replicator.StartReplication(l.slotName, l.readLSN(), -1, protoVersion, publicationNames(publicationName))
 	if err != nil {
 		l.errChannel <- newListenerError("StartReplication()", err)
+
 		return
 	}
 
 	go l.SendPeriodicHeartbeats(ctx)
+
 	tx := NewWalTransaction()
 	for {
 		if ctx.Err() != nil {
 			l.errChannel <- newListenerError("read msg", err)
 			break
 		}
+
 		msg, err := l.replicator.WaitForReplicationMessage(ctx)
 		if err != nil {
 			l.errChannel <- newListenerError("WaitForReplicationMessage()", err)
@@ -227,38 +230,44 @@ func (l *Listener) Stream(ctx context.Context) {
 			if msg.WalMessage != nil {
 				logrus.WithField("wal", msg.WalMessage.WalStart).
 					Debugln("receive wal message")
-				err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx)
-				if err != nil {
+
+				if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
 					logrus.WithError(err).Errorln("msg parse failed")
 					l.errChannel <- fmt.Errorf("%v: %w", ErrUnmarshalMsg, err)
+
 					continue
 				}
+
 				if tx.CommitTime != nil {
 					natsEvents := tx.CreateEventsWithFilter(l.config.Database.Filter.Tables)
 					for _, event := range natsEvents {
 						subjectName := event.GetSubjectName(l.config.Nats.TopicPrefix)
 						if err = l.publisher.Publish(subjectName, event); err != nil {
 							l.errChannel <- fmt.Errorf("%v: %w", ErrPublishEvent, err)
+
 							continue
-						} else {
-							logrus.
-								WithField("subject", subjectName).
-								WithField("action", event.Action).
-								WithField("lsn", l.readLSN()).
-								Infoln("event was send")
 						}
+
+						logrus.
+							WithField("subject", subjectName).
+							WithField("action", event.Action).
+							WithField("lsn", l.readLSN()).
+							Infoln("event was send")
+
 					}
+
 					tx.Clear()
 				}
 
 				if msg.WalMessage.WalStart > l.readLSN() {
-					err = l.AckWalMessage(msg.WalMessage.WalStart)
-					if err != nil {
+					if err = l.AckWalMessage(msg.WalMessage.WalStart); err != nil {
 						l.errChannel <- fmt.Errorf("%v: %w", ErrAckWalMessage, err)
+
 						continue
-					} else {
-						logrus.WithField("lsn", l.readLSN()).Debugln("ack wal msg")
 					}
+
+					logrus.WithField("lsn", l.readLSN()).Debugln("ack wal msg")
+
 				}
 			}
 			if msg.ServerHeartbeat != nil {
@@ -268,10 +277,11 @@ func (l *Listener) Stream(ctx context.Context) {
 					"server_time":    msg.ServerHeartbeat.ServerTime,
 				}).
 					Debugln("received server heartbeat")
+
 				if msg.ServerHeartbeat.ReplyRequested == 1 {
 					logrus.Debugln("status requested")
-					err = l.SendStandbyStatus()
-					if err != nil {
+
+					if err = l.SendStandbyStatus(); err != nil {
 						l.errChannel <- fmt.Errorf("%v: %w", ErrSendStandbyStatus, err)
 					}
 				}
@@ -282,38 +292,44 @@ func (l *Listener) Stream(ctx context.Context) {
 
 // Stop is a finalizer function.
 func (l *Listener) Stop() error {
-	var err error
-	err = l.publisher.Close()
-	if err != nil {
-		return err
+
+	if err := l.publisher.Close(); err != nil {
+		return fmt.Errorf("publisher close: %w", err)
 	}
-	err = l.repository.Close()
-	if err != nil {
-		return err
+
+	if err := l.repository.Close(); err != nil {
+		return fmt.Errorf("repository close: %w", err)
 	}
-	err = l.replicator.Close()
-	if err != nil {
-		return err
+
+	if err := l.replicator.Close(); err != nil {
+		return fmt.Errorf("replicator close: %w", err)
 	}
+
 	logrus.Infoln(StopServiceMessage)
+
 	return nil
 }
 
 // SendPeriodicHeartbeats send periodic keep alive heartbeats to the server.
 func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
+	heart := time.NewTicker(l.config.Listener.HeartbeatInterval)
+	defer heart.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			logrus.WithField("func", "SendPeriodicHeartbeats").
 				Infoln("context was canceled, stop sending heartbeats")
+
 			return
-		case <-time.NewTicker(l.config.Listener.HeartbeatInterval).C:
+		case <-heart.C:
 			{
-				err := l.SendStandbyStatus()
-				if err != nil {
+				if err := l.SendStandbyStatus(); err != nil {
 					logrus.WithError(err).Errorln("failed to send status heartbeat")
+
 					continue
 				}
+
 				logrus.Debugln("sending periodic status heartbeat")
 			}
 		}
@@ -326,20 +342,23 @@ func (l *Listener) SendStandbyStatus() error {
 	if err != nil {
 		return fmt.Errorf("unable to create StandbyStatus object: %w", err)
 	}
+
 	standbyStatus.ReplyRequested = 0
-	err = l.replicator.SendStandbyStatus(standbyStatus)
-	if err != nil {
+
+	if err := l.replicator.SendStandbyStatus(standbyStatus); err != nil {
 		return fmt.Errorf("unable to send StandbyStatus object: %w", err)
 	}
+
 	return nil
 }
 
 // AckWalMessage acknowledge received wal message.
 func (l *Listener) AckWalMessage(lsn uint64) error {
 	l.setLSN(lsn)
-	err := l.SendStandbyStatus()
-	if err != nil {
-		return err
+
+	if err := l.SendStandbyStatus(); err != nil {
+		return fmt.Errorf("send status: %w", err)
 	}
+
 	return nil
 }
