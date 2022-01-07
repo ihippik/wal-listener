@@ -90,21 +90,25 @@ func NewWalListener(
 func (l *Listener) readLSN() uint64 {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
+
 	return l.lsn
 }
 
 func (l *Listener) setLSN(lsn uint64) {
 	l.mu.Lock()
-	l.lsn = lsn
 	defer l.mu.Unlock()
+
+	l.lsn = lsn
 }
 
 // Process is main service entry point.
 func (l *Listener) Process() error {
 	var serviceErr *serviceErr
+
 	logger := logrus.WithField("slot_name", l.slotName)
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
+
 	logger.WithField("logger_level", l.config.Logger.Level).Infoln(StartServiceMessage)
 
 	if err := l.repository.CreatePublication(publicationName); err != nil {
@@ -113,22 +117,22 @@ func (l *Listener) Process() error {
 
 	slotIsExists, err := l.slotIsExists()
 	if err != nil {
-		logger.WithError(err).Errorln("slotIsExists() error")
-		return err
+		return fmt.Errorf("slot is exists: %w", err)
 	}
 
 	if !slotIsExists {
 		consistentPoint, _, err := l.replicator.CreateReplicationSlotEx(l.slotName, pgOutputPlugin)
 		if err != nil {
-			logger.WithError(err).Infoln("CreateReplicationSlotEx() error")
-			return err
+			return fmt.Errorf("create replication slot: %w", err)
 		}
+
 		lsn, err := pgx.ParseLSN(consistentPoint)
 		if err != nil {
-			logger.WithError(err).Errorln("slotIsExists() error")
-			return err
+			return fmt.Errorf("parse lsn: %w", err)
 		}
+
 		l.setLSN(lsn)
+
 		logger.Infoln("create new slot")
 	} else {
 		logger.Infoln("slot already exists, LSN updated")
@@ -137,8 +141,10 @@ func (l *Listener) Process() error {
 	go l.Stream(ctx)
 
 	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	refresh := time.NewTicker(l.config.Listener.RefreshConnection)
+
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
 ProcessLoop:
 	for {
 		select {
@@ -146,26 +152,28 @@ ProcessLoop:
 			if !l.replicator.IsAlive() {
 				logrus.Fatalln(errReplConnectionIsLost)
 			}
+
 			if !l.repository.IsAlive() {
 				logrus.Fatalln(errConnectionIsLost)
-				l.errChannel <- errConnectionIsLost
 			}
 		case err := <-l.errChannel:
 			if errors.As(err, &serviceErr) {
 				cancelFunc()
+
 				logrus.Fatalln(err)
 			} else {
 				logrus.Errorln(err)
 			}
 
 		case <-signalChan:
-			err := l.Stop()
-			if err != nil {
-				logrus.WithError(err).Errorln("l.Stop() error")
+			if err := l.Stop(); err != nil {
+				logrus.WithError(err).Errorln("listener stop error")
 			}
+
 			break ProcessLoop
 		}
 	}
+
 	return nil
 }
 
@@ -177,18 +185,24 @@ func (l *Listener) slotIsExists() (bool, error) {
 			logrus.
 				WithField("slot", l.slotName).
 				Warningln("restart_lsn for slot not found")
+
 			return false, nil
 		}
+
 		return false, err
 	}
+
 	if len(restartLSNStr) == 0 {
 		return false, nil
 	}
+
 	lsn, err := pgx.ParseLSN(restartLSNStr)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("parse lsn: %w", err)
 	}
+
 	l.setLSN(lsn)
+
 	return true, nil
 }
 
