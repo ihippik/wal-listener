@@ -87,26 +87,13 @@ func NewWalListener(
 	}
 }
 
-func (l *Listener) readLSN() uint64 {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	return l.lsn
-}
-
-func (l *Listener) setLSN(lsn uint64) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.lsn = lsn
-}
-
 // Process is main service entry point.
-func (l *Listener) Process() error {
+func (l *Listener) Process(ctx context.Context) error {
 	var serviceErr *serviceErr
 
 	logger := logrus.WithField("slot_name", l.slotName)
-	ctx, cancelFunc := context.WithCancel(context.Background())
+
+	ctx, cancelFunc := context.WithCancel(ctx)
 	defer cancelFunc()
 
 	logger.WithField("logger_level", l.config.Logger.Level).Infoln(StartServiceMessage)
@@ -156,6 +143,7 @@ ProcessLoop:
 			if !l.repository.IsAlive() {
 				logrus.Fatalln(errConnectionIsLost)
 			}
+
 		case err := <-l.errChannel:
 			if errors.As(err, &serviceErr) {
 				cancelFunc()
@@ -375,4 +363,18 @@ func (l *Listener) AckWalMessage(lsn uint64) error {
 	}
 
 	return nil
+}
+
+func (l *Listener) readLSN() uint64 {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	return l.lsn
+}
+
+func (l *Listener) setLSN(lsn uint64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.lsn = lsn
 }

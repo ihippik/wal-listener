@@ -64,7 +64,7 @@ func main() {
 				listener.NewBinaryParser(binary.BigEndian),
 			)
 
-			if err := service.Process(); err != nil {
+			if err := service.Process(c.Context); err != nil {
 				return fmt.Errorf("service process: %w", err)
 			}
 
