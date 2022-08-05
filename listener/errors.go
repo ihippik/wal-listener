@@ -2,16 +2,6 @@ package listener
 
 import "errors"
 
-// Constants with error text message
-const (
-	ErrPostgresConnection    = "db connection error"
-	ErrReplicationConnection = "replication connection error"
-	ErrPublishEvent          = "publish message error"
-	ErrUnmarshalMsg          = "unmarshal wal message error"
-	ErrAckWalMessage         = "acknowledge wal message error"
-	ErrSendStandbyStatus     = "send standby status error"
-)
-
 // Variable with connection errors.
 var (
 	errReplConnectionIsLost = errors.New("replication connection to postgres is lost")

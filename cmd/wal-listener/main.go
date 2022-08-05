@@ -13,7 +13,7 @@ import (
 )
 
 // go build -ldflags "-X main.version=1.0.1" main.go
-var version = "0.1.0"
+var version = "0.2.0"
 
 func main() {
 	cli.VersionFlag = &cli.BoolFlag{
@@ -46,7 +46,7 @@ func main() {
 
 			initLogger(cfg.Logger)
 
-			sc, err := stan.Connect(cfg.Nats.ClusterID, cfg.Nats.ClientID, stan.NatsURL(cfg.Nats.Address))
+			natsConn, err := stan.Connect(cfg.Nats.ClusterID, cfg.Nats.ClientID, stan.NatsURL(cfg.Nats.Address))
 			if err != nil {
 				return fmt.Errorf("nats connection: %w", err)
 			}
@@ -60,7 +60,7 @@ func main() {
 				cfg,
 				listener.NewRepository(conn),
 				rConn,
-				listener.NewNatsPublisher(sc),
+				listener.NewNatsPublisher(natsConn),
 				listener.NewBinaryParser(binary.BigEndian),
 			)
 

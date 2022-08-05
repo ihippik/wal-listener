@@ -1,6 +1,9 @@
 package listener
 
-import "github.com/jackc/pgx"
+import (
+	"errors"
+	"github.com/jackc/pgx"
+)
 
 // RepositoryImpl service repository.
 type RepositoryImpl struct {
@@ -16,10 +19,12 @@ func NewRepository(conn *pgx.Conn) *RepositoryImpl {
 func (r RepositoryImpl) GetSlotLSN(slotName string) (string, error) {
 	var restartLSNStr string
 
-	err := r.conn.QueryRow(
-		"SELECT restart_lsn FROM pg_replication_slots WHERE slot_name=$1;",
-		slotName,
-	).Scan(&restartLSNStr)
+	err := r.conn.QueryRow("SELECT restart_lsn FROM pg_replication_slots WHERE slot_name=$1;", slotName).
+		Scan(&restartLSNStr)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
 
 	return restartLSNStr, err
 }

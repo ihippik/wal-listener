@@ -300,8 +300,8 @@ func (p *BinaryParser) readTupleData() []TupleData {
 			logrus.Debugln(
 				"tupleData: toast data type")
 		case TextDataType:
-			vsize := int(p.readInt32())
-			data[i] = TupleData{Value: p.buffer.Next(vsize)}
+			vSize := int(p.readInt32())
+			data[i] = TupleData{Value: p.buffer.Next(vSize)}
 		}
 	}
 

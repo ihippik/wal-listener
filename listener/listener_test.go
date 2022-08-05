@@ -71,17 +71,6 @@ func TestListener_slotIsExists(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "slot not exists (no rows)",
-			setup: func() {
-				setGetSlotLSN("myslot", "", pgx.ErrNoRows)
-			},
-			fields: fields{
-				slotName: "myslot",
-			},
-			want:    false,
-			wantErr: false,
-		},
-		{
 			name: "repository error",
 			setup: func() {
 				setGetSlotLSN("myslot", "", errSimple)
@@ -96,18 +85,22 @@ func TestListener_slotIsExists(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
+
 			w := &Listener{
 				slotName:   tt.fields.slotName,
 				repository: repo,
 			}
+
 			got, err := w.slotIsExists()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("slotIsExists() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+
 			if got != tt.want {
 				t.Errorf("slotIsExists() got = %v, want %v", got, tt.want)
 			}
+
 			repo.AssertExpectations(t)
 		})
 	}

@@ -13,6 +13,7 @@ type parserMock struct {
 func (p *parserMock) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	args := p.Called(msg, tx)
 	now := time.Now()
+
 	tx.BeginTime = &now
 	tx.CommitTime = &now
 	tx.Actions = []ActionData{
@@ -30,5 +31,6 @@ func (p *parserMock) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 			},
 		},
 	}
+
 	return args.Error(0)
 }

@@ -1,4 +1,5 @@
-FROM alpine:3.10
+FROM alpine:3.16
+
 MAINTAINER Konstantin Makarov <hippik80@gmail.com>
 RUN adduser -D developer
 WORKDIR /app

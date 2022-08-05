@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/jackc/pgx"
@@ -19,15 +18,7 @@ import (
 const errorBufferSize = 100
 
 // Logical decoding plugin.
-const (
-	pgOutputPlugin = "pgoutput"
-)
-
-// Service info message.
-const (
-	StartServiceMessage = "service was started"
-	StopServiceMessage  = "service was stopped"
-)
+const pgOutputPlugin = "pgoutput"
 
 type publisher interface {
 	Publish(string, Event) error
@@ -89,14 +80,14 @@ func NewWalListener(
 
 // Process is main service entry point.
 func (l *Listener) Process(ctx context.Context) error {
-	var serviceErr *serviceErr
+	var svcErr serviceErr
 
 	logger := logrus.WithField("slot_name", l.slotName)
 
-	ctx, cancelFunc := context.WithCancel(ctx)
-	defer cancelFunc()
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
+	defer stop()
 
-	logger.WithField("logger_level", l.config.Logger.Level).Infoln(StartServiceMessage)
+	logger.Infoln("service was started")
 
 	if err := l.repository.CreatePublication(publicationName); err != nil {
 		logger.WithError(err).Warnln("skip create publication")
@@ -119,7 +110,6 @@ func (l *Listener) Process(ctx context.Context) error {
 		}
 
 		l.setLSN(lsn)
-
 		logger.Infoln("create new slot")
 	} else {
 		logger.Infoln("slot already exists, LSN updated")
@@ -127,33 +117,29 @@ func (l *Listener) Process(ctx context.Context) error {
 
 	go l.Stream(ctx)
 
-	signalChan := make(chan os.Signal, 1)
 	refresh := time.NewTicker(l.config.Listener.RefreshConnection)
-
-	signal.Notify(signalChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	defer refresh.Stop()
 
 ProcessLoop:
 	for {
 		select {
 		case <-refresh.C:
 			if !l.replicator.IsAlive() {
-				logrus.Fatalln(errReplConnectionIsLost)
+				return fmt.Errorf("replicator: %w", errReplConnectionIsLost)
 			}
 
 			if !l.repository.IsAlive() {
-				logrus.Fatalln(errConnectionIsLost)
+				return fmt.Errorf("repository: %w", errConnectionIsLost)
 			}
-
 		case err := <-l.errChannel:
-			if errors.As(err, &serviceErr) {
-				cancelFunc()
-
-				logrus.Fatalln(err)
-			} else {
-				logrus.Errorln(err)
+			if errors.As(err, svcErr) {
+				return err
 			}
 
-		case <-signalChan:
+			logrus.WithError(err).Errorln("received error")
+		case <-ctx.Done():
+			logrus.Debugln("context was canceled")
+
 			if err := l.Stop(); err != nil {
 				logrus.WithError(err).Errorln("listener stop error")
 			}
@@ -169,18 +155,11 @@ ProcessLoop:
 func (l *Listener) slotIsExists() (bool, error) {
 	restartLSNStr, err := l.repository.GetSlotLSN(l.slotName)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			logrus.
-				WithField("slot", l.slotName).
-				Warningln("restart_lsn for slot not found")
-
-			return false, nil
-		}
-
 		return false, err
 	}
 
 	if len(restartLSNStr) == 0 {
+		logrus.WithField("slot_name", l.slotName).Warningln("restart LSN not found")
 		return false, nil
 	}
 
@@ -206,8 +185,13 @@ const (
 // Stream receive event from PostgreSQL.
 // Accept message, apply filter and  publish it in NATS server.
 func (l *Listener) Stream(ctx context.Context) {
-	err := l.replicator.StartReplication(l.slotName, l.readLSN(), -1, protoVersion, publicationNames(publicationName))
-	if err != nil {
+	if err := l.replicator.StartReplication(
+		l.slotName,
+		l.readLSN(),
+		-1,
+		protoVersion,
+		publicationNames(publicationName),
+	); err != nil {
 		l.errChannel <- newListenerError("StartReplication()", err)
 
 		return
@@ -217,7 +201,7 @@ func (l *Listener) Stream(ctx context.Context) {
 
 	tx := NewWalTransaction()
 	for {
-		if ctx.Err() != nil {
+		if err := ctx.Err(); err != nil {
 			l.errChannel <- newListenerError("read msg", err)
 			break
 		}
@@ -230,12 +214,11 @@ func (l *Listener) Stream(ctx context.Context) {
 
 		if msg != nil {
 			if msg.WalMessage != nil {
-				logrus.WithField("wal", msg.WalMessage.WalStart).
-					Debugln("receive wal message")
+				logrus.WithField("wal", msg.WalMessage.WalStart).Debugln("receive wal message")
 
 				if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
 					logrus.WithError(err).Errorln("msg parse failed")
-					l.errChannel <- fmt.Errorf("%v: %w", ErrUnmarshalMsg, err)
+					l.errChannel <- fmt.Errorf("unmarshal wal message: %w", err)
 
 					continue
 				}
@@ -243,10 +226,10 @@ func (l *Listener) Stream(ctx context.Context) {
 				if tx.CommitTime != nil {
 					natsEvents := tx.CreateEventsWithFilter(l.config.Database.Filter.Tables)
 					for _, event := range natsEvents {
-						subjectName := event.GetSubjectName(l.config.Nats.TopicPrefix)
-						if err = l.publisher.Publish(subjectName, event); err != nil {
-							l.errChannel <- fmt.Errorf("%v: %w", ErrPublishEvent, err)
+						subjectName := event.SubjectName(l.config.Nats.TopicPrefix)
 
+						if err = l.publisher.Publish(subjectName, event); err != nil {
+							l.errChannel <- fmt.Errorf("publish message: %w", err)
 							continue
 						}
 
@@ -255,7 +238,6 @@ func (l *Listener) Stream(ctx context.Context) {
 							WithField("action", event.Action).
 							WithField("lsn", l.readLSN()).
 							Infoln("event was send")
-
 					}
 
 					tx.Clear()
@@ -263,28 +245,26 @@ func (l *Listener) Stream(ctx context.Context) {
 
 				if msg.WalMessage.WalStart > l.readLSN() {
 					if err = l.AckWalMessage(msg.WalMessage.WalStart); err != nil {
-						l.errChannel <- fmt.Errorf("%v: %w", ErrAckWalMessage, err)
-
+						l.errChannel <- fmt.Errorf("acknowledge wal message: %w", err)
 						continue
 					}
 
 					logrus.WithField("lsn", l.readLSN()).Debugln("ack wal msg")
-
 				}
 			}
+
 			if msg.ServerHeartbeat != nil {
 				//FIXME panic if there have been no messages for a long time.
 				logrus.WithFields(logrus.Fields{
 					"server_wal_end": msg.ServerHeartbeat.ServerWalEnd,
 					"server_time":    msg.ServerHeartbeat.ServerTime,
-				}).
-					Debugln("received server heartbeat")
+				}).Debugln("received server heartbeat")
 
 				if msg.ServerHeartbeat.ReplyRequested == 1 {
 					logrus.Debugln("status requested")
 
 					if err = l.SendStandbyStatus(); err != nil {
-						l.errChannel <- fmt.Errorf("%v: %w", ErrSendStandbyStatus, err)
+						l.errChannel <- fmt.Errorf("send standby status: %w", err)
 					}
 				}
 			}
@@ -294,7 +274,6 @@ func (l *Listener) Stream(ctx context.Context) {
 
 // Stop is a finalizer function.
 func (l *Listener) Stop() error {
-
 	if err := l.publisher.Close(); err != nil {
 		return fmt.Errorf("publisher close: %w", err)
 	}
@@ -307,7 +286,7 @@ func (l *Listener) Stop() error {
 		return fmt.Errorf("replicator close: %w", err)
 	}
 
-	logrus.Infoln(StopServiceMessage)
+	logrus.Infoln("service was stopped")
 
 	return nil
 }
@@ -328,7 +307,6 @@ func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 			{
 				if err := l.SendStandbyStatus(); err != nil {
 					logrus.WithError(err).Errorln("failed to send status heartbeat")
-
 					continue
 				}
 

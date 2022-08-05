@@ -40,8 +40,8 @@ func TestEvent_GetSubjectName(t *testing.T) {
 				Action: tt.fields.Action,
 				Data:   tt.fields.Data,
 			}
-			if got := e.GetSubjectName(tt.args.prefix); got != tt.want {
-				t.Errorf("GetSubjectName() = %v, want %v", got, tt.want)
+			if got := e.SubjectName(tt.args.prefix); got != tt.want {
+				t.Errorf("SubjectName() = %v, want %v", got, tt.want)
 			}
 		})
 	}

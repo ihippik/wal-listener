@@ -4,12 +4,10 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
 	"github.com/ihippik/wal-listener/config"
-	"github.com/ihippik/wal-listener/listener"
 )
 
 // logger log levels.
@@ -40,6 +38,7 @@ func getConf(path string) (*config.Config, error) {
 // initLogger init logrus preferences.
 func initLogger(cfg config.LoggerCfg) {
 	logrus.SetReportCaller(cfg.Caller)
+
 	if !cfg.HumanReadable {
 		logrus.SetFormatter(&logrus.JSONFormatter{})
 	}
@@ -77,12 +76,12 @@ func initPgxConnections(cfg config.DatabaseCfg) (*pgx.Conn, *pgx.ReplicationConn
 
 	pgConn, err := pgx.Connect(pgxConf)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, listener.ErrPostgresConnection)
+		return nil, nil, fmt.Errorf("db connection: %w", err)
 	}
 
 	rConnection, err := pgx.ReplicationConnect(pgxConf)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%v: %w", listener.ErrReplicationConnection, err)
+		return nil, nil, fmt.Errorf("replication connect: %w", err)
 	}
 
 	return pgConn, rConnection, nil

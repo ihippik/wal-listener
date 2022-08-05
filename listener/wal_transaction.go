@@ -98,21 +98,20 @@ func (w *WalTransaction) Clear() {
 }
 
 // CreateActionData create action  from WAL message data.
-func (w WalTransaction) CreateActionData(
-	relationID int32,
-	rows []TupleData,
-	kind ActionKind,
-) (a ActionData, err error) {
+func (w *WalTransaction) CreateActionData(relationID int32, rows []TupleData, kind ActionKind) (a ActionData, err error) {
 	rel, ok := w.RelationStore[relationID]
 	if !ok {
 		return a, errors.New("relation not found")
 	}
+
 	a = ActionData{
 		Schema: rel.Schema,
 		Table:  rel.Table,
 		Kind:   kind,
 	}
+
 	var columns []Column
+
 	for num, row := range rows {
 		column := Column{
 			name:      rel.Columns[num].name,
@@ -122,14 +121,15 @@ func (w WalTransaction) CreateActionData(
 		column.AssertValue(row.Value)
 		columns = append(columns, column)
 	}
+
 	a.Columns = columns
+
 	return a, nil
 }
 
 // CreateEventsWithFilter filter WAL message by table,
 // action and create events for each value.
-func (w *WalTransaction) CreateEventsWithFilter(
-	tableMap map[string][]string) []Event {
+func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []Event {
 	var events []Event
 
 	for _, item := range w.Actions {
@@ -153,15 +153,16 @@ func (w *WalTransaction) CreateEventsWithFilter(
 		validAction := inArray(actions, item.Kind.string())
 		if validTable && validAction {
 			events = append(events, event)
-		} else {
-			logrus.WithFields(
-				logrus.Fields{
-					"schema": item.Schema,
-					"table":  item.Table,
-					"action": item.Kind,
-				}).
-				Infoln("wal message skip by filter")
+			continue
 		}
+
+		logrus.WithFields(
+			logrus.Fields{
+				"schema": item.Schema,
+				"table":  item.Table,
+				"action": item.Kind,
+			}).
+			Infoln("wal message skip by filter")
 	}
 
 	return events
