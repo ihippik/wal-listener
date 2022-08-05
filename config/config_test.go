@@ -47,6 +47,7 @@ func TestConfig_Validate(t *testing.T) {
 			name: "bad listener cfg",
 			fields: fields{
 				Listener: ListenerCfg{
+					SlotName:          "",
 					HeartbeatInterval: 10,
 				},
 				Database: DatabaseCfg{
@@ -63,7 +64,7 @@ func TestConfig_Validate(t *testing.T) {
 					TopicPrefix: "prefix",
 				},
 			},
-			wantErr: errors.New("Listener.SlotName: non zero value required;Listener.RefreshConnection: non zero value required"),
+			wantErr: errors.New("Listener.RefreshConnection: non zero value required;Listener.SlotName: non zero value required"),
 		},
 		{
 			name: "bad db cfg",
@@ -121,10 +122,10 @@ func TestConfig_Validate(t *testing.T) {
 				Nats:     tt.fields.Nats,
 			}
 			err := c.Validate()
-			if err == nil {
-				assert.Nil(t, tt.wantErr)
+			if err != nil && assert.Error(t, tt.wantErr, err.Error()) {
+				assert.EqualError(t, err, tt.wantErr.Error())
 			} else {
-				assert.EqualError(t, tt.wantErr, err.Error())
+				assert.Nil(t, tt.wantErr)
 			}
 		})
 	}
