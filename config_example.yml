@@ -2,24 +2,28 @@ listener:
   slotName: myslot_1
   refreshConnection: 30s
   heartbeatInterval: 10s
+  filter:
+    tables:
+      seasons:
+        - insert
+        - update
+  topicsMap:
+    schema_table_name: "notifier"
 logger:
   caller: false
   level: info
-  humanReadable: true
+  format: json
 database:
   host: localhost
   port: 5432
-  name: test_db
-  user: back
+  name: my_db
+  user: postgres
+  password: postgres
   debug: false
-  password: pass
-  filter:
-    tables:
-      users:
-        - insert
-        - update
 nats:
   address: localhost:4222
   clusterID: test-cluster
   clientID: wal-listener
-  topicPrefix: "pre"
+  topicPrefix: ""
+monitoring:
+  sentryDSN: ""
