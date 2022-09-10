@@ -14,7 +14,7 @@ publishing events in a single transaction with a domain model change.
 The service allows you to subscribe to changes in the PostgreSQL database using its logical decoding capability 
 and publish them to the NATS Streaming server.
 
-### Logic of work
+## Logic of work
 To receive events about data changes in our PostgreSQL DB
   we use the standard logic decoding module (**pgoutput**) This module converts
  changes read from the WAL into a logical replication protocol.
@@ -55,7 +55,16 @@ databases:
 This filter means that we only process events occurring with the `users` table, 
 and in particular `insert` and `update` data.
 
-### DB setting
+### Topic mapping
+By default,  output NATS topic name consist of prefix, DB schema, and DB table name, 
+but if you want to send all update in one topic you should be configured the topic map:
+```yaml
+  topicsMap:
+      main_users: "notifier"
+      main_customers: "notifier"
+```
+
+## DB setting
 You must make the following settings in the db configuration (postgresql.conf)
 * wal_level >= “logical”
 * max_replication_slots >= 1
@@ -67,7 +76,40 @@ https://www.postgresql.org/docs/current/sql-createpublication.html
 
 If you change the publication, do not forget to change the slot name or delete the current one.
 
-### Docker
+## Service configuration
+```yaml
+listener:
+  slotName: myslot_1
+  refreshConnection: 30s
+  heartbeatInterval: 10s
+  filter:
+    tables:
+      seasons:
+        - insert
+        - update
+  topicsMap:
+      schema_table_name: "notifier"
+logger:
+  caller: false
+  level: info
+  format: json
+database:
+  host: localhost
+  port: 5432
+  name: my_db
+  user: postgres
+  password: postgres
+  debug: false
+nats:
+  address: localhost:4222
+  clusterID: test-cluster
+  clientID: wal-listener
+  topicPrefix: ""
+monitoring:
+ sentryDSN: "dsn string"
+```
+
+## Docker
 
 You can start the container from the project folder (configuration file is required)
 

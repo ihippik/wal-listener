@@ -8,10 +8,11 @@ import (
 
 // Config for wal-listener/
 type Config struct {
-	Listener ListenerCfg
-	Database DatabaseCfg
-	Nats     NatsCfg
-	Logger   LoggerCfg
+	Listener   ListenerCfg
+	Database   DatabaseCfg
+	Nats       NatsCfg
+	Logger     LoggerCfg
+	Monitoring MonitoringCfg
 }
 
 // ListenerCfg path of the listener config.
@@ -20,6 +21,8 @@ type ListenerCfg struct {
 	AckTimeout        time.Duration
 	RefreshConnection time.Duration `valid:"required"`
 	HeartbeatInterval time.Duration `valid:"required"`
+	Filter            FilterStruct
+	TopicsMap         map[string]string
 }
 
 // NatsCfg path of the NATS config.
@@ -27,14 +30,19 @@ type NatsCfg struct {
 	Address     string `valid:"required"`
 	ClusterID   string `valid:"required"`
 	ClientID    string `valid:"required"`
-	TopicPrefix string `valid:"required"`
+	TopicPrefix string
+}
+
+// MonitoringCfg monitoring configuration.
+type MonitoringCfg struct {
+	SentryDSN string
 }
 
 // LoggerCfg path of the logger config.
 type LoggerCfg struct {
-	Caller        bool
-	Level         string
-	HumanReadable bool
+	Caller bool
+	Level  string
+	Format string
 }
 
 // DatabaseCfg path of the PostgreSQL DB config.
@@ -44,7 +52,6 @@ type DatabaseCfg struct {
 	Name     string `valid:"required"`
 	User     string `valid:"required"`
 	Password string `valid:"required"`
-	Filter   FilterStruct
 }
 
 // FilterStruct incoming WAL message filter.

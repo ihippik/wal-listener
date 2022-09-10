@@ -1,6 +1,10 @@
 package listener
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ihippik/wal-listener/config"
+)
 
 func TestEvent_GetSubjectName(t *testing.T) {
 	type fields struct {
@@ -10,7 +14,7 @@ func TestEvent_GetSubjectName(t *testing.T) {
 		Data   map[string]interface{}
 	}
 	type args struct {
-		prefix string
+		cfg *config.Config
 	}
 	tests := []struct {
 		name   string
@@ -27,7 +31,12 @@ func TestEvent_GetSubjectName(t *testing.T) {
 				Data:   nil,
 			},
 			args: args{
-				prefix: "prefix_",
+				cfg: &config.Config{
+					Listener: config.ListenerCfg{
+						TopicsMap: nil,
+					},
+					Nats: config.NatsCfg{TopicPrefix: "prefix_"},
+				},
 			},
 			want: "prefix_public_users",
 		},
@@ -40,7 +49,7 @@ func TestEvent_GetSubjectName(t *testing.T) {
 				Action: tt.fields.Action,
 				Data:   tt.fields.Data,
 			}
-			if got := e.SubjectName(tt.args.prefix); got != tt.want {
+			if got := e.SubjectName(tt.args.cfg); got != tt.want {
 				t.Errorf("SubjectName() = %v, want %v", got, tt.want)
 			}
 		})

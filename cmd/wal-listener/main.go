@@ -12,15 +12,14 @@ import (
 	"github.com/ihippik/wal-listener/listener"
 )
 
-// go build -ldflags "-X main.version=1.0.1" main.go
-var version = "0.2.0"
-
 func main() {
 	cli.VersionFlag = &cli.BoolFlag{
 		Name:    "version",
 		Aliases: []string{"v"},
 		Usage:   "print only the version",
 	}
+
+	version := getVersion()
 
 	app := &cli.App{
 		Name:    "Wal-Listener",
@@ -44,7 +43,9 @@ func main() {
 				return fmt.Errorf("validate config: %w", err)
 			}
 
-			initLogger(cfg.Logger)
+			logger := initLogger(cfg.Logger, version)
+
+			initSentry(cfg.Monitoring.SentryDSN, logger)
 
 			natsConn, err := stan.Connect(cfg.Nats.ClusterID, cfg.Nats.ClientID, stan.NatsURL(cfg.Nats.Address))
 			if err != nil {
@@ -58,6 +59,7 @@ func main() {
 
 			service := listener.NewWalListener(
 				cfg,
+				logger,
 				listener.NewRepository(conn),
 				rConn,
 				listener.NewNatsPublisher(natsConn),

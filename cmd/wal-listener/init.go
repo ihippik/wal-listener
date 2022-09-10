@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"runtime/debug"
 
+	"github.com/evalphobia/logrus_sentry"
 	"github.com/jackc/pgx"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -17,6 +19,21 @@ const (
 	fatalLoggerLevel   = "fatal"
 	infoLoggerLevel    = "info"
 )
+
+func getVersion() string {
+	var version = "unknown"
+
+	info, ok := debug.ReadBuildInfo()
+	if ok {
+		for _, item := range info.Settings {
+			if item.Key == "vcs.revision" {
+				version = item.Value[:4]
+			}
+		}
+	}
+
+	return version
+}
 
 // getConf load config from file.
 func getConf(path string) (*config.Config, error) {
@@ -36,11 +53,13 @@ func getConf(path string) (*config.Config, error) {
 }
 
 // initLogger init logrus preferences.
-func initLogger(cfg config.LoggerCfg) {
-	logrus.SetReportCaller(cfg.Caller)
+func initLogger(cfg config.LoggerCfg, version string) *logrus.Entry {
+	logger := logrus.New()
 
-	if !cfg.HumanReadable {
-		logrus.SetFormatter(&logrus.JSONFormatter{})
+	logger.SetReportCaller(cfg.Caller)
+
+	if cfg.Format == "json" {
+		logger.SetFormatter(&logrus.JSONFormatter{})
 	}
 
 	var level logrus.Level
@@ -58,7 +77,29 @@ func initLogger(cfg config.LoggerCfg) {
 		level = logrus.DebugLevel
 	}
 
-	logrus.SetLevel(level)
+	logger.SetLevel(level)
+
+	return logger.WithField("version", version)
+}
+
+func initSentry(dsn string, logger *logrus.Entry) {
+	if len(dsn) == 0 {
+		logger.Warnln("empty Sentry DSN")
+		return
+	}
+
+	hook, err := logrus_sentry.NewSentryHook(
+		dsn,
+		[]logrus.Level{
+			logrus.PanicLevel,
+			logrus.FatalLevel,
+			logrus.ErrorLevel,
+		},
+	)
+
+	if err == nil {
+		logger.Logger.AddHook(hook)
+	}
 }
 
 // initPgxConnections initialise db and replication connections.

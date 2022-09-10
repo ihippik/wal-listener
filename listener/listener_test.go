@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/sirupsen/logrus"
+	"io"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"bou.ke/monkey"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -82,11 +83,16 @@ func TestListener_slotIsExists(t *testing.T) {
 			wantErr: true,
 		},
 	}
+
+	logger := logrus.New()
+	logger.Out = io.Discard
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
 
 			w := &Listener{
+				log:        logrus.NewEntry(logger),
 				slotName:   tt.fields.slotName,
 				repository: repo,
 			}
@@ -126,6 +132,9 @@ func TestListener_Stop(t *testing.T) {
 			Return(err).
 			Once()
 	}
+
+	logger := logrus.New()
+	logger.Out = io.Discard
 
 	tests := []struct {
 		name    string
@@ -170,6 +179,7 @@ func TestListener_Stop(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
 			w := &Listener{
+				log:        logrus.NewEntry(logger),
 				publisher:  publ,
 				replicator: repl,
 				repository: repo,
@@ -360,7 +370,7 @@ func TestListener_Stream(t *testing.T) {
 	prs := new(parserMock)
 
 	type fields struct {
-		config     config.Config
+		config     *config.Config
 		slotName   string
 		restartLSN uint64
 	}
@@ -408,7 +418,9 @@ func TestListener_Stream(t *testing.T) {
 			Once().
 			After(10 * time.Millisecond)
 	}
+
 	uuid.SetRand(bytes.NewReader(make([]byte, 512)))
+
 	tests := []struct {
 		name   string
 		setup  func()
@@ -489,13 +501,11 @@ func TestListener_Stream(t *testing.T) {
 				)
 			},
 			fields: fields{
-				config: config.Config{
+				config: &config.Config{
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
 						HeartbeatInterval: 1,
-					},
-					Database: config.DatabaseCfg{
 						Filter: config.FilterStruct{
 							Tables: map[string][]string{"users": {"insert"}},
 						},
@@ -524,14 +534,11 @@ func TestListener_Stream(t *testing.T) {
 				)
 			},
 			fields: fields{
-				config: config.Config{
+				config: &config.Config{
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
-						HeartbeatInterval: 1,
-					},
-					Database: config.DatabaseCfg{
-						Filter: config.FilterStruct{
+						HeartbeatInterval: 1, Filter: config.FilterStruct{
 							Tables: map[string][]string{"users": {"insert"}},
 						},
 					},
@@ -585,14 +592,11 @@ func TestListener_Stream(t *testing.T) {
 				)
 			},
 			fields: fields{
-				config: config.Config{
+				config: &config.Config{
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
-						HeartbeatInterval: 1,
-					},
-					Database: config.DatabaseCfg{
-						Filter: config.FilterStruct{
+						HeartbeatInterval: 1, Filter: config.FilterStruct{
 							Tables: map[string][]string{"users": {"insert"}},
 						},
 					},
@@ -657,14 +661,11 @@ func TestListener_Stream(t *testing.T) {
 				)
 			},
 			fields: fields{
-				config: config.Config{
+				config: &config.Config{
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
-						HeartbeatInterval: 1,
-					},
-					Database: config.DatabaseCfg{
-						Filter: config.FilterStruct{
+						HeartbeatInterval: 1, Filter: config.FilterStruct{
 							Tables: map[string][]string{"users": {"insert"}},
 						},
 					},
@@ -762,14 +763,11 @@ func TestListener_Stream(t *testing.T) {
 				)
 			},
 			fields: fields{
-				config: config.Config{
+				config: &config.Config{
 					Listener: config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
-						HeartbeatInterval: 1,
-					},
-					Database: config.DatabaseCfg{
-						Filter: config.FilterStruct{
+						HeartbeatInterval: 1, Filter: config.FilterStruct{
 							Tables: map[string][]string{"users": {"insert"}},
 						},
 					},
@@ -785,13 +783,18 @@ func TestListener_Stream(t *testing.T) {
 			},
 		},
 	}
+
+	logger := logrus.New()
+	logger.Out = io.Discard
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
 
 			ctx, cancel := context.WithTimeout(context.Background(), tt.args.timeout)
 			w := &Listener{
-				config:     tt.fields.config,
+				log:        logrus.NewEntry(logger),
+				cfg:        tt.fields.config,
 				slotName:   tt.fields.slotName,
 				publisher:  publ,
 				replicator: repl,

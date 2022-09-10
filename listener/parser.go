@@ -35,24 +35,27 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	switch p.msgType {
 	case BeginMsgType:
 		begin := p.getBeginMsg()
+
 		logrus.
 			WithFields(
 				logrus.Fields{
 					"lsn": begin.LSN,
 					"xid": begin.XID,
 				}).
-			Infoln("receive begin message")
+			Debugln("begin type message was received")
+
 		tx.LSN = begin.LSN
 		tx.BeginTime = &begin.Timestamp
 	case CommitMsgType:
 		commit := p.getCommitMsg()
+
 		logrus.
 			WithFields(
 				logrus.Fields{
 					"lsn":             commit.LSN,
 					"transaction_lsn": commit.TransactionLSN,
 				}).
-			Infoln("receive commit message")
+			Debugln("commit message was received")
 
 		if tx.LSN > 0 && tx.LSN != commit.LSN {
 			return fmt.Errorf("commit: %w", errMessageLost)
@@ -60,16 +63,17 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		tx.CommitTime = &commit.Timestamp
 	case OriginMsgType:
-		logrus.Infoln("receive origin message")
+		logrus.Debugln("origin type message was received")
 	case RelationMsgType:
 		relation := p.getRelationMsg()
+
 		logrus.
 			WithFields(
 				logrus.Fields{
 					"relation_id": relation.ID,
 					"replica":     relation.Replica,
 				}).
-			Infoln("receive relation message")
+			Debugln("relation type message was received")
 
 		if tx.LSN == 0 {
 			return fmt.Errorf("commit: %w", errMessageLost)
@@ -92,21 +96,23 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		tx.RelationStore[relation.ID] = rd
 
 	case TypeMsgType:
-		logrus.Infoln("type")
+		logrus.Debugln("type message was received")
 	case InsertMsgType:
 		insert := p.getInsertMsg()
+
 		logrus.
 			WithFields(
 				logrus.Fields{
 					"relation_id": insert.RelationID,
 				}).
-			Infoln("receive insert message")
+			Debugln("insert type message was received")
 
 		action, err := tx.CreateActionData(
 			insert.RelationID,
 			insert.Row,
 			ActionKindInsert,
 		)
+
 		if err != nil {
 			return fmt.Errorf("create action data: %w", err)
 		}
@@ -114,12 +120,13 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		tx.Actions = append(tx.Actions, action)
 	case UpdateMsgType:
 		upd := p.getUpdateMsg()
+
 		logrus.
 			WithFields(
 				logrus.Fields{
 					"relation_id": upd.RelationID,
 				}).
-			Infoln("receive update message")
+			Debugln("update type message was received")
 
 		action, err := tx.CreateActionData(
 			upd.RelationID,
@@ -133,12 +140,13 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		tx.Actions = append(tx.Actions, action)
 	case DeleteMsgType:
 		del := p.getDeleteMsg()
+
 		logrus.
 			WithFields(
 				logrus.Fields{
 					"relation_id": del.RelationID,
 				}).
-			Infoln("receive delete message")
+			Debugln("delete type message was received")
 
 		action, err := tx.CreateActionData(
 			del.RelationID,
@@ -297,8 +305,7 @@ func (p *BinaryParser) readTupleData() []TupleData {
 		case NullDataType:
 			logrus.Debugln("tupleData: null data type")
 		case ToastDataType:
-			logrus.Debugln(
-				"tupleData: toast data type")
+			logrus.Debugln("tupleData: toast data type")
 		case TextDataType:
 			vSize := int(p.readInt32())
 			data[i] = TupleData{Value: p.buffer.Next(vSize)}

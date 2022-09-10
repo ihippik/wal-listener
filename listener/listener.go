@@ -48,8 +48,9 @@ type repository interface {
 
 // Listener main service struct.
 type Listener struct {
+	cfg        *config.Config
+	log        *logrus.Entry
 	mu         sync.RWMutex
-	config     config.Config
 	slotName   string
 	publisher  publisher
 	replicator replication
@@ -62,14 +63,16 @@ type Listener struct {
 // NewWalListener create and initialize new service instance.
 func NewWalListener(
 	cfg *config.Config,
+	log *logrus.Entry,
 	repo repository,
 	repl replication,
 	publ publisher,
 	parser parser,
 ) *Listener {
 	return &Listener{
+		log:        log,
 		slotName:   fmt.Sprintf("%s_%s", cfg.Listener.SlotName, cfg.Database.Name),
-		config:     *cfg,
+		cfg:        cfg,
 		publisher:  publ,
 		repository: repo,
 		replicator: repl,
@@ -80,9 +83,7 @@ func NewWalListener(
 
 // Process is main service entry point.
 func (l *Listener) Process(ctx context.Context) error {
-	var svcErr serviceErr
-
-	logger := logrus.WithField("slot_name", l.slotName)
+	logger := l.log.WithField("slot_name", l.slotName)
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
@@ -110,15 +111,17 @@ func (l *Listener) Process(ctx context.Context) error {
 		}
 
 		l.setLSN(lsn)
-		logger.Infoln("create new slot")
+		logger.Infoln("new slot was created")
 	} else {
 		logger.Infoln("slot already exists, LSN updated")
 	}
 
 	go l.Stream(ctx)
 
-	refresh := time.NewTicker(l.config.Listener.RefreshConnection)
+	refresh := time.NewTicker(l.cfg.Listener.RefreshConnection)
 	defer refresh.Stop()
+
+	var svcErr *serviceErr
 
 ProcessLoop:
 	for {
@@ -132,16 +135,16 @@ ProcessLoop:
 				return fmt.Errorf("repository: %w", errConnectionIsLost)
 			}
 		case err := <-l.errChannel:
-			if errors.As(err, svcErr) {
+			if errors.As(err, &svcErr) {
 				return err
 			}
 
-			logrus.WithError(err).Errorln("received error")
+			l.log.WithError(err).Errorln("received error")
 		case <-ctx.Done():
-			logrus.Debugln("context was canceled")
+			logger.Debugln("context was canceled")
 
 			if err := l.Stop(); err != nil {
-				logrus.WithError(err).Errorln("listener stop error")
+				logger.WithError(err).Errorln("listener stop error")
 			}
 
 			break ProcessLoop
@@ -159,7 +162,7 @@ func (l *Listener) slotIsExists() (bool, error) {
 	}
 
 	if len(restartLSNStr) == 0 {
-		logrus.WithField("slot_name", l.slotName).Warningln("restart LSN not found")
+		l.log.WithField("slot_name", l.slotName).Warningln("restart LSN not found")
 		return false, nil
 	}
 
@@ -200,6 +203,7 @@ func (l *Listener) Stream(ctx context.Context) {
 	go l.SendPeriodicHeartbeats(ctx)
 
 	tx := NewWalTransaction()
+
 	for {
 		if err := ctx.Err(); err != nil {
 			l.errChannel <- newListenerError("read msg", err)
@@ -214,30 +218,31 @@ func (l *Listener) Stream(ctx context.Context) {
 
 		if msg != nil {
 			if msg.WalMessage != nil {
-				logrus.WithField("wal", msg.WalMessage.WalStart).Debugln("receive wal message")
+				l.log.WithField("wal", msg.WalMessage.WalStart).Debugln("receive wal message")
 
 				if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
-					logrus.WithError(err).Errorln("msg parse failed")
+					l.log.WithError(err).Errorln("msg parse failed")
 					l.errChannel <- fmt.Errorf("unmarshal wal message: %w", err)
 
 					continue
 				}
 
 				if tx.CommitTime != nil {
-					natsEvents := tx.CreateEventsWithFilter(l.config.Database.Filter.Tables)
+					natsEvents := tx.CreateEventsWithFilter(l.cfg.Listener.Filter.Tables)
 					for _, event := range natsEvents {
-						subjectName := event.SubjectName(l.config.Nats.TopicPrefix)
+						subjectName := event.SubjectName(l.cfg)
 
 						if err = l.publisher.Publish(subjectName, event); err != nil {
 							l.errChannel <- fmt.Errorf("publish message: %w", err)
 							continue
 						}
 
-						logrus.
-							WithField("subject", subjectName).
-							WithField("action", event.Action).
-							WithField("lsn", l.readLSN()).
-							Infoln("event was send")
+						l.log.WithFields(logrus.Fields{
+							"subject": subjectName,
+							"action":  event.Action,
+							"table":   event.Table,
+							"lsn":     l.readLSN(),
+						}).Infoln("event was sent")
 					}
 
 					tx.Clear()
@@ -249,19 +254,19 @@ func (l *Listener) Stream(ctx context.Context) {
 						continue
 					}
 
-					logrus.WithField("lsn", l.readLSN()).Debugln("ack wal msg")
+					l.log.WithField("lsn", l.readLSN()).Debugln("ack wal msg")
 				}
 			}
 
 			if msg.ServerHeartbeat != nil {
 				//FIXME panic if there have been no messages for a long time.
-				logrus.WithFields(logrus.Fields{
+				l.log.WithFields(logrus.Fields{
 					"server_wal_end": msg.ServerHeartbeat.ServerWalEnd,
 					"server_time":    msg.ServerHeartbeat.ServerTime,
 				}).Debugln("received server heartbeat")
 
 				if msg.ServerHeartbeat.ReplyRequested == 1 {
-					logrus.Debugln("status requested")
+					l.log.Debugln("status requested")
 
 					if err = l.SendStandbyStatus(); err != nil {
 						l.errChannel <- fmt.Errorf("send standby status: %w", err)
@@ -286,31 +291,31 @@ func (l *Listener) Stop() error {
 		return fmt.Errorf("replicator close: %w", err)
 	}
 
-	logrus.Infoln("service was stopped")
+	l.log.Infoln("service was stopped")
 
 	return nil
 }
 
 // SendPeriodicHeartbeats send periodic keep alive heartbeats to the server.
 func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
-	heart := time.NewTicker(l.config.Listener.HeartbeatInterval)
+	heart := time.NewTicker(l.cfg.Listener.HeartbeatInterval)
 	defer heart.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			logrus.WithField("func", "SendPeriodicHeartbeats").
+			l.log.WithField("func", "SendPeriodicHeartbeats").
 				Infoln("context was canceled, stop sending heartbeats")
 
 			return
 		case <-heart.C:
 			{
 				if err := l.SendStandbyStatus(); err != nil {
-					logrus.WithError(err).Errorln("failed to send status heartbeat")
+					l.log.WithError(err).Errorln("failed to send status heartbeat")
 					continue
 				}
 
-				logrus.Debugln("sending periodic status heartbeat")
+				l.log.Debugln("sending periodic status heartbeat")
 			}
 		}
 	}

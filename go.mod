@@ -5,6 +5,7 @@ go 1.19
 require (
 	bou.ke/monkey v1.0.2
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
+	github.com/evalphobia/logrus_sentry v0.8.2
 	github.com/goccy/go-json v0.9.10
 	github.com/google/uuid v1.3.0
 	github.com/jackc/pgx v3.6.2+incompatible
@@ -17,10 +18,12 @@ require (
 )
 
 require (
+	github.com/certifi/gocertifi v0.0.0-20210507211836-431795d63e8d // indirect
 	github.com/cockroachdb/apd v1.1.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
+	github.com/getsentry/raven-go v0.2.0 // indirect
 	github.com/gofrs/uuid v3.2.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect

@@ -162,7 +162,7 @@ func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []
 				"table":  item.Table,
 				"action": item.Kind,
 			}).
-			Infoln("wal message skip by filter")
+			Infoln("wal-message was skipped by filter")
 	}
 
 	return events

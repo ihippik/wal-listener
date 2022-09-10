@@ -7,6 +7,8 @@ import (
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/nats-io/stan.go"
+
+	"github.com/ihippik/wal-listener/config"
 )
 
 // NatsPublisher represent event publisher.
@@ -44,7 +46,17 @@ func NewNatsPublisher(conn stan.Conn) *NatsPublisher {
 	return &NatsPublisher{conn: conn}
 }
 
-// SubjectName creates subject name from the prefix, schema and table name.
-func (e *Event) SubjectName(prefix string) string {
-	return fmt.Sprintf("%s%s_%s", prefix, e.Schema, e.Table)
+// SubjectName creates subject name from the prefix, schema and table name. Also using topic map from cfg.
+func (e *Event) SubjectName(cfg *config.Config) string {
+	topic := fmt.Sprintf("%s_%s", e.Schema, e.Table)
+
+	if cfg.Listener.TopicsMap != nil {
+		if t, ok := cfg.Listener.TopicsMap[topic]; ok {
+			topic = t
+		}
+	}
+
+	topic = cfg.Nats.TopicPrefix + topic
+
+	return topic
 }
