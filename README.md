@@ -102,8 +102,7 @@ database:
   debug: false
 nats:
   address: localhost:4222
-  clusterID: test-cluster
-  clientID: wal-listener
+  streamName: "wal_listener"
   topicPrefix: ""
 monitoring:
  sentryDSN: "dsn string"
