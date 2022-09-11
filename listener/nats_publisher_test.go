@@ -35,10 +35,10 @@ func TestEvent_GetSubjectName(t *testing.T) {
 					Listener: config.ListenerCfg{
 						TopicsMap: nil,
 					},
-					Nats: config.NatsCfg{TopicPrefix: "prefix_"},
+					Nats: config.NatsCfg{TopicPrefix: "prefix_", StreamName: "STREAM"},
 				},
 			},
-			want: "prefix_public_users",
+			want: "STREAM.prefix_public_users",
 		},
 	}
 	for _, tt := range tests {

@@ -122,11 +122,7 @@ func TestListener_Stop(t *testing.T) {
 			Return(err).
 			Once()
 	}
-	setPublClose := func(err error) {
-		publ.On("Close").
-			Return(err).
-			Once()
-	}
+
 	setReplClose := func(err error) {
 		repl.On("Close").
 			Return(err).
@@ -145,7 +141,6 @@ func TestListener_Stop(t *testing.T) {
 			name: "success",
 			setup: func() {
 				setRepoClose(nil)
-				setPublClose(nil)
 				setReplClose(nil)
 			},
 			wantErr: nil,
@@ -153,24 +148,15 @@ func TestListener_Stop(t *testing.T) {
 		{
 			name: "repository error",
 			setup: func() {
-				setPublClose(nil)
 				setRepoClose(errors.New("repo err"))
 			},
 			wantErr: errors.New("repository close: repo err"),
-		},
-		{
-			name: "publication error",
-			setup: func() {
-				setPublClose(errors.New("publication err"))
-			},
-			wantErr: errors.New("publisher close: publication err"),
 		},
 		{
 			name: "replication error",
 			setup: func() {
 				setReplClose(errors.New("replication err"))
 				setRepoClose(nil)
-				setPublClose(nil)
 			},
 			wantErr: errors.New("replicator close: replication err"),
 		},
@@ -471,7 +457,7 @@ func TestListener_Stream(t *testing.T) {
 				)
 
 				setPublish(
-					"pre_public_users",
+					"STREAM.pre_public_users",
 					Event{
 						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
 						Schema:    "public",
@@ -511,6 +497,7 @@ func TestListener_Stream(t *testing.T) {
 						},
 					},
 					Nats: config.NatsCfg{
+						StreamName:  "STREAM",
 						TopicPrefix: "pre_",
 					},
 				},
@@ -544,6 +531,7 @@ func TestListener_Stream(t *testing.T) {
 					},
 					Nats: config.NatsCfg{
 						TopicPrefix: "pre_",
+						StreamName:  "stream",
 					},
 				},
 				slotName:   "myslot",
@@ -740,7 +728,7 @@ func TestListener_Stream(t *testing.T) {
 				)
 
 				setPublish(
-					"pre_public_users",
+					"STREAM.pre_public_users",
 					Event{
 						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
 						Schema:    "public",
@@ -772,6 +760,7 @@ func TestListener_Stream(t *testing.T) {
 						},
 					},
 					Nats: config.NatsCfg{
+						StreamName:  "STREAM",
 						TopicPrefix: "pre_",
 					},
 				},

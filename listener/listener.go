@@ -22,7 +22,6 @@ const pgOutputPlugin = "pgoutput"
 
 type publisher interface {
 	Publish(string, Event) error
-	Close() error
 }
 
 type parser interface {
@@ -279,10 +278,6 @@ func (l *Listener) Stream(ctx context.Context) {
 
 // Stop is a finalizer function.
 func (l *Listener) Stop() error {
-	if err := l.publisher.Close(); err != nil {
-		return fmt.Errorf("publisher close: %w", err)
-	}
-
 	if err := l.repository.Close(); err != nil {
 		return fmt.Errorf("repository close: %w", err)
 	}

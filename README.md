@@ -23,7 +23,7 @@ Then we filter out only the events we need and publish them in the queue
 
 ### Event publishing
 
-NATS Streaming is used as a message broker.
+NATS JetStream is used as a message broker.
 Service publishes the following structure.
 The name of the topic for subscription to receive messages is formed from the prefix of the topic, 
 the name of the database and the name of the table `prefix + schema_table`.
@@ -39,7 +39,7 @@ the name of the database and the name of the table `prefix + schema_table`.
 }
 ```
 
-Messages are published to Nats-Streaming at least once!
+Messages are published to NATS (JetStream) at least once!
 
 ### Filter configuration example
 
@@ -56,7 +56,7 @@ This filter means that we only process events occurring with the `users` table,
 and in particular `insert` and `update` data.
 
 ### Topic mapping
-By default,  output NATS topic name consist of prefix, DB schema, and DB table name, 
+By default, output NATS topic name consist of prefix, DB schema, and DB table name, 
 but if you want to send all update in one topic you should be configured the topic map:
 ```yaml
   topicsMap:
@@ -114,5 +114,5 @@ monitoring:
 You can start the container from the project folder (configuration file is required)
 
 ```
-docker run -v $(pwd)/config.yml:/app/config.yml ihippik/wal-listener:v2.0.0
+docker run -v $(pwd)/config.yml:/app/config.yml ihippik/wal-listener:v2.1.0
 ```

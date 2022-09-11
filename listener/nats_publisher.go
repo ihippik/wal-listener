@@ -6,19 +6,14 @@ import (
 
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
-	"github.com/nats-io/stan.go"
+	"github.com/nats-io/nats.go"
 
 	"github.com/ihippik/wal-listener/config"
 )
 
 // NatsPublisher represent event publisher.
 type NatsPublisher struct {
-	conn stan.Conn
-}
-
-// Close NATS connection.
-func (n NatsPublisher) Close() error {
-	return n.conn.Close()
+	js nats.JetStreamContext
 }
 
 // Event structure for publishing to the NATS server.
@@ -38,12 +33,16 @@ func (n NatsPublisher) Publish(subject string, event Event) error {
 		return fmt.Errorf("marshal err: %w", err)
 	}
 
-	return n.conn.Publish(subject, msg)
+	if _, err := n.js.Publish(subject, msg); err != nil {
+		return fmt.Errorf("failed to publish: %w", err)
+	}
+
+	return nil
 }
 
 // NewNatsPublisher return new NatsPublisher instance.
-func NewNatsPublisher(conn stan.Conn) *NatsPublisher {
-	return &NatsPublisher{conn: conn}
+func NewNatsPublisher(js nats.JetStreamContext) *NatsPublisher {
+	return &NatsPublisher{js: js}
 }
 
 // SubjectName creates subject name from the prefix, schema and table name. Also using topic map from cfg.
@@ -56,7 +55,7 @@ func (e *Event) SubjectName(cfg *config.Config) string {
 		}
 	}
 
-	topic = cfg.Nats.TopicPrefix + topic
+	topic = cfg.Nats.StreamName + "." + cfg.Nats.TopicPrefix + topic
 
 	return topic
 }

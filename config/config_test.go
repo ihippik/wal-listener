@@ -36,8 +36,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				Nats: NatsCfg{
 					Address:     "addr",
-					ClusterID:   "cluster",
-					ClientID:    "client",
+					StreamName:  "stream",
 					TopicPrefix: "prefix",
 				},
 			},
@@ -59,8 +58,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				Nats: NatsCfg{
 					Address:     "addr",
-					ClusterID:   "cluster",
-					ClientID:    "client",
+					StreamName:  "stream",
 					TopicPrefix: "prefix",
 				},
 			},
@@ -82,8 +80,7 @@ func TestConfig_Validate(t *testing.T) {
 				},
 				Nats: NatsCfg{
 					Address:     "addr",
-					ClusterID:   "cluster",
-					ClientID:    "client",
+					StreamName:  "stream",
 					TopicPrefix: "prefix",
 				},
 			},
@@ -106,12 +103,34 @@ func TestConfig_Validate(t *testing.T) {
 					Password: "pass",
 				},
 				Nats: NatsCfg{
-					ClusterID:   "cluster",
-					ClientID:    "client",
+					StreamName:  "stream",
 					TopicPrefix: "prefix",
 				},
 			},
 			wantErr: errors.New("Nats.Address: non zero value required"),
+		},
+		{
+			name: "empty nats stream cfg",
+			fields: fields{
+				Listener: ListenerCfg{
+					SlotName:          "slot",
+					AckTimeout:        10,
+					RefreshConnection: 10,
+					HeartbeatInterval: 10,
+				},
+				Database: DatabaseCfg{
+					Host:     "host",
+					Port:     10,
+					Name:     "db",
+					User:     "usr",
+					Password: "pass",
+				},
+				Nats: NatsCfg{
+					Address:     "addr",
+					TopicPrefix: "prefix",
+				},
+			},
+			wantErr: errors.New("Nats.StreamName: non zero value required"),
 		},
 	}
 	for _, tt := range tests {

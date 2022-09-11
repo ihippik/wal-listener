@@ -28,8 +28,7 @@ type ListenerCfg struct {
 // NatsCfg path of the NATS config.
 type NatsCfg struct {
 	Address     string `valid:"required"`
-	ClusterID   string `valid:"required"`
-	ClientID    string `valid:"required"`
+	StreamName  string `valid:"required"`
 	TopicPrefix string
 }
 

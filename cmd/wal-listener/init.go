@@ -6,6 +6,7 @@ import (
 
 	"github.com/evalphobia/logrus_sentry"
 	"github.com/jackc/pgx"
+	"github.com/nats-io/nats.go"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
@@ -80,6 +81,29 @@ func initLogger(cfg config.LoggerCfg, version string) *logrus.Entry {
 	logger.SetLevel(level)
 
 	return logger.WithField("version", version)
+}
+
+// createStream creates a stream by using JetStreamContext. We can do it manually.
+func createStream(logger *logrus.Entry, js nats.JetStreamContext, streamName string) error {
+	stream, err := js.StreamInfo(streamName)
+	if err != nil {
+		logger.WithError(err).Warnln("stream info")
+	}
+
+	if stream == nil {
+		var streamSubjects = streamName + ".*"
+
+		if _, err = js.AddStream(&nats.StreamConfig{
+			Name:     streamName,
+			Subjects: []string{streamSubjects},
+		}); err != nil {
+			return err
+		}
+
+		logger.WithField("subjects", streamSubjects).Infoln("stream not exists, created..")
+	}
+
+	return nil
 }
 
 func initSentry(dsn string, logger *logrus.Entry) {
