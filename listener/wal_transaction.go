@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/pgtype"
 	"github.com/sirupsen/logrus"
 )
 
@@ -67,26 +66,52 @@ type Column struct {
 // AssertValue converts bytes to a specific type depending
 // on the type of this data in the database table.
 func (c *Column) AssertValue(src []byte) {
-	var val interface{}
+	var (
+		val any
+		err error
+	)
+
 	if src == nil {
 		c.value = nil
 		return
 	}
+
 	strSrc := string(src)
+
+	const (
+		timestampLayout       = "2006-01-02 15:04:05"
+		timestampWithTZLayout = "2006-01-02 15:04:05.000000-07"
+	)
+
 	switch c.valueType {
-	case pgtype.BoolOID:
-		val, _ = strconv.ParseBool(strSrc)
-	case pgtype.Int4OID:
-		val, _ = strconv.Atoi(strSrc)
-	case pgtype.TextOID, pgtype.VarcharOID:
+	case BoolOID:
+		val, err = strconv.ParseBool(strSrc)
+	case Int2OID, Int4OID:
+		val, err = strconv.Atoi(strSrc)
+	case Int8OID:
+		val, err = strconv.ParseInt(strSrc, 10, 64)
+	case TextOID, VarcharOID:
 		val = strSrc
-	case pgtype.TimestampOID, pgtype.TimestamptzOID:
+	case TimestampOID:
+		val, err = time.Parse(timestampLayout, strSrc)
+	case TimestamptzOID:
+		val, err = time.Parse(timestampWithTZLayout, strSrc)
+	case DateOID, TimeOID:
+		val = strSrc
+	case UUIDOID:
+		val, err = uuid.Parse(strSrc)
+	case JSONBOID:
 		val = strSrc
 	default:
-		logrus.WithField("pgtype", c.valueType).
-			Warnln("unknown oid type")
+		logrus.WithFields(logrus.Fields{"pgtype": c.valueType, "column_name": c.name}).Warnln("unknown oid type")
 		val = strSrc
 	}
+
+	if err != nil {
+		logrus.WithError(err).WithFields(logrus.Fields{"pgtype": c.valueType, "column_name": c.name}).
+			Errorln("column data parse error")
+	}
+
 	c.value = val
 }
 
