@@ -112,6 +112,9 @@ monitoring:
 
 You can start the container from the project folder (configuration file is required)
 
-```
-docker run -v $(pwd)/config.yml:/app/config.yml ihippik/wal-listener:v2.1.0
+#### Docker Hub
+https://hub.docker.com/r/ihippik/wal-listener
+#### Example
+```shell
+docker run -v $(pwd)/config.yml:/app/config.yml ihippik/wal-listener:tag
 ```
