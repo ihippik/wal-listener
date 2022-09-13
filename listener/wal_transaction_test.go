@@ -1,11 +1,11 @@
 package listener
 
 import (
+	"github.com/google/uuid"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/pgtype"
 	"github.com/magiconair/properties/assert"
 )
 
@@ -44,7 +44,7 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 							{
 								name:      "id",
 								value:     5,
-								valueType: pgtype.Int4OID,
+								valueType: Int4OID,
 								isKey:     true,
 							},
 						},
@@ -69,7 +69,7 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 					{
 						name:      "id",
 						value:     11,
-						valueType: pgtype.Int4OID,
+						valueType: Int4OID,
 						isKey:     true,
 					},
 				},
@@ -90,7 +90,7 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 							{
 								name:      "id",
 								value:     5,
-								valueType: pgtype.Int4OID,
+								valueType: Int4OID,
 								isKey:     true,
 							},
 						},
@@ -147,7 +147,7 @@ func TestColumn_AssertValue(t *testing.T) {
 			name: "bool",
 			fields: fields{
 				name:      "isBool",
-				valueType: pgtype.BoolOID,
+				valueType: BoolOID,
 				isKey:     false,
 			},
 			args: args{
@@ -161,10 +161,44 @@ func TestColumn_AssertValue(t *testing.T) {
 			},
 		},
 		{
+			name: "int",
+			fields: fields{
+				name:      "name",
+				valueType: Int2OID,
+				isKey:     false,
+			},
+			args: args{
+				src: []byte("555"),
+			},
+			want: &Column{
+				name:      "name",
+				value:     555,
+				valueType: 21,
+				isKey:     false,
+			},
+		},
+		{
+			name: "int8",
+			fields: fields{
+				name:      "name",
+				valueType: Int8OID,
+				isKey:     false,
+			},
+			args: args{
+				src: []byte("555"),
+			},
+			want: &Column{
+				name:      "name",
+				value:     int64(555),
+				valueType: 20,
+				isKey:     false,
+			},
+		},
+		{
 			name: "text",
 			fields: fields{
 				name:      "name",
-				valueType: pgtype.TextOID,
+				valueType: TextOID,
 				isKey:     false,
 			},
 			args: args{
@@ -181,16 +215,84 @@ func TestColumn_AssertValue(t *testing.T) {
 			name: "timestamp",
 			fields: fields{
 				name:      "created",
-				valueType: pgtype.TimestampOID,
+				valueType: TimestampOID,
 				isKey:     false,
 			},
 			args: args{
-				src: []byte{50, 48, 50, 48, 45, 49, 48, 45, 49, 50},
+				src: []byte("2022-08-27 17:44:01"),
 			},
 			want: &Column{
 				name:      "created",
-				value:     "2020-10-12",
+				value:     time.Date(2022, 8, 27, 17, 44, 1, 0, time.UTC),
 				valueType: 1114,
+				isKey:     false,
+			},
+		},
+		{
+			name: "timestamp with tz",
+			fields: fields{
+				name:      "created",
+				valueType: TimestamptzOID,
+				isKey:     false,
+			},
+			args: args{
+				src: []byte("2022-08-27T17:44:01.041007Z"),
+			},
+			want: &Column{
+				name:      "created",
+				value:     time.Date(2022, 8, 27, 17, 44, 1, 41007000, time.UTC),
+				valueType: 1184,
+				isKey:     false,
+			},
+		},
+		{
+			name: "uuid",
+			fields: fields{
+				name:      "uuid",
+				valueType: UUIDOID,
+				isKey:     false,
+			},
+			args: args{
+				src: []byte("600f37ed-1d88-4262-8be4-c3360e833f50"),
+			},
+			want: &Column{
+				name:      "uuid",
+				value:     uuid.MustParse("600f37ed-1d88-4262-8be4-c3360e833f50"),
+				valueType: 2950,
+				isKey:     false,
+			},
+		},
+		{
+			name: "jsonb",
+			fields: fields{
+				name:      "jsonb",
+				valueType: JSONBOID,
+				isKey:     false,
+			},
+			args: args{
+				src: []byte(`{"name":"jsonb"}`),
+			},
+			want: &Column{
+				name:      "jsonb",
+				value:     map[string]any{"name": "jsonb"},
+				valueType: 3802,
+				isKey:     false,
+			},
+		},
+		{
+			name: "date",
+			fields: fields{
+				name:      "date",
+				valueType: DateOID,
+				isKey:     false,
+			},
+			args: args{
+				src: []byte(`1980-03-19`),
+			},
+			want: &Column{
+				name:      "date",
+				value:     "1980-03-19",
+				valueType: 1082,
 				isKey:     false,
 			},
 		},
@@ -198,7 +300,7 @@ func TestColumn_AssertValue(t *testing.T) {
 			name: "unknown",
 			fields: fields{
 				name:      "created",
-				valueType: pgtype.Float4ArrayOID,
+				valueType: 1,
 				isKey:     false,
 			},
 			args: args{
@@ -207,7 +309,7 @@ func TestColumn_AssertValue(t *testing.T) {
 			want: &Column{
 				name:      "created",
 				value:     "2020-10-12",
-				valueType: 1021,
+				valueType: 1,
 				isKey:     false,
 			},
 		},
@@ -219,7 +321,9 @@ func TestColumn_AssertValue(t *testing.T) {
 				valueType: tt.fields.valueType,
 				isKey:     tt.fields.isKey,
 			}
+
 			c.AssertValue(tt.args.src)
+
 			assert.Equal(t, c, tt.want)
 		})
 	}

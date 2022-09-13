@@ -2,6 +2,7 @@ package listener
 
 import (
 	"errors"
+	"github.com/goccy/go-json"
 	"strconv"
 	"strings"
 	"time"
@@ -58,7 +59,7 @@ type ActionData struct {
 // Column of the table with which changes occur.
 type Column struct {
 	name      string
-	value     interface{}
+	value     any
 	valueType int
 	isKey     bool
 }
@@ -78,10 +79,7 @@ func (c *Column) AssertValue(src []byte) {
 
 	strSrc := string(src)
 
-	const (
-		timestampLayout       = "2006-01-02 15:04:05"
-		timestampWithTZLayout = "2006-01-02 15:04:05.000000-07"
-	)
+	const timestampLayout = "2006-01-02 15:04:05"
 
 	switch c.valueType {
 	case BoolOID:
@@ -95,13 +93,15 @@ func (c *Column) AssertValue(src []byte) {
 	case TimestampOID:
 		val, err = time.Parse(timestampLayout, strSrc)
 	case TimestamptzOID:
-		val, err = time.Parse(timestampWithTZLayout, strSrc)
+		val, err = time.Parse(time.RFC3339, strSrc)
 	case DateOID, TimeOID:
 		val = strSrc
 	case UUIDOID:
 		val, err = uuid.Parse(strSrc)
 	case JSONBOID:
-		val = strSrc
+		m := make(map[string]any)
+		err = json.Unmarshal(src, &m)
+		val = m
 	default:
 		logrus.WithFields(logrus.Fields{"pgtype": c.valueType, "column_name": c.name}).Warnln("unknown oid type")
 		val = strSrc
