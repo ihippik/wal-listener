@@ -28,13 +28,13 @@ Service publishes the following structure.
 The name of the topic for subscription to receive messages is formed from the prefix of the topic, 
 the name of the database and the name of the table `prefix + schema_table`.
 
-```
+```go
 {
 	ID        uuid.UUID   # unique ID           
 	Schema    string                 
 	Table     string                 
 	Action    string                 
-	Data      map[string]interface{} 
+	Data      map[string]any 
 	EventTime time.Time   # commit time          
 }
 ```
