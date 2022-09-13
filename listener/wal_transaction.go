@@ -79,7 +79,10 @@ func (c *Column) AssertValue(src []byte) {
 
 	strSrc := string(src)
 
-	const timestampLayout = "2006-01-02 15:04:05"
+	const (
+		timestampLayout       = "2006-01-02 15:04:05"
+		timestampWithTZLayout = "2006-01-02 15:04:05.999999999+00"
+	)
 
 	switch c.valueType {
 	case BoolOID:
@@ -93,7 +96,7 @@ func (c *Column) AssertValue(src []byte) {
 	case TimestampOID:
 		val, err = time.Parse(timestampLayout, strSrc)
 	case TimestamptzOID:
-		val, err = time.Parse(time.RFC3339, strSrc)
+		val, err = time.ParseInLocation(timestampWithTZLayout, strSrc, time.UTC)
 	case DateOID, TimeOID:
 		val = strSrc
 	case UUIDOID:

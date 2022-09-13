@@ -236,11 +236,11 @@ func TestColumn_AssertValue(t *testing.T) {
 				isKey:     false,
 			},
 			args: args{
-				src: []byte("2022-08-27T17:44:01.041007Z"),
+				src: []byte("2022-08-27 17:44:58.083316+00"),
 			},
 			want: &Column{
 				name:      "created",
-				value:     time.Date(2022, 8, 27, 17, 44, 1, 41007000, time.UTC),
+				value:     time.Date(2022, 8, 27, 17, 44, 58, 83316000, time.UTC),
 				valueType: 1184,
 				isKey:     false,
 			},
