@@ -26,3 +26,4 @@ nats:
   topicPrefix: ""
 monitoring:
   sentryDSN: ""
+  promAddr: ":2112"

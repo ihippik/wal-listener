@@ -35,6 +35,7 @@ type NatsCfg struct {
 // MonitoringCfg monitoring configuration.
 type MonitoringCfg struct {
 	SentryDSN string
+	PromAddr  string
 }
 
 // LoggerCfg path of the logger config.

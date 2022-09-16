@@ -55,8 +55,10 @@ func getConf(path string) (*config.Config, error) {
 	return &cfg, nil
 }
 
-func initMetrics(logger *logrus.Entry) {
-	const addr = ":2112"
+func initMetrics(addr string, logger *logrus.Entry) {
+	if len(addr) == 0 {
+		return
+	}
 
 	logger.WithField("addr", addr).Infoln("metrics handler")
 
