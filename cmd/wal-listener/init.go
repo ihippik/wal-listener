@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"runtime/debug"
 
 	"github.com/evalphobia/logrus_sentry"
 	"github.com/jackc/pgx"
 	"github.com/nats-io/nats.go"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
@@ -51,6 +53,18 @@ func getConf(path string) (*config.Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func initMetrics(logger *logrus.Entry) {
+	const addr = ":2112"
+
+	logger.WithField("addr", addr).Infoln("metrics handler")
+
+	http.Handle("/metrics", promhttp.Handler())
+	if err := http.ListenAndServe(addr, nil); err != nil {
+		logger.WithError(err).Errorln("init metrics handler")
+		return
+	}
 }
 
 // initLogger init logrus preferences.

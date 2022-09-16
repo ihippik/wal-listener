@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sirupsen/logrus"
 
 	"github.com/ihippik/wal-listener/config"
@@ -58,6 +60,22 @@ type Listener struct {
 	lsn        uint64
 	errChannel chan error
 }
+
+var (
+	publishedEvents = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "published_events",
+		Help: "The total number of published events",
+	},
+		[]string{"subject", "table"},
+	)
+
+	filterSkippedEvents = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "filter_skipped_events",
+		Help: "The total number of skipped events",
+	},
+		[]string{"table"},
+	)
+)
 
 // NewWalListener create and initialize new service instance.
 func NewWalListener(
@@ -228,6 +246,7 @@ func (l *Listener) Stream(ctx context.Context) {
 
 				if tx.CommitTime != nil {
 					natsEvents := tx.CreateEventsWithFilter(l.cfg.Listener.Filter.Tables)
+
 					for _, event := range natsEvents {
 						subjectName := event.SubjectName(l.cfg)
 
@@ -235,6 +254,8 @@ func (l *Listener) Stream(ctx context.Context) {
 							l.errChannel <- fmt.Errorf("publish message: %w", err)
 							continue
 						}
+
+						publishedEvents.With(prometheus.Labels{"subject": subjectName, "table": event.Table}).Inc()
 
 						l.log.WithFields(logrus.Fields{
 							"subject": subjectName,

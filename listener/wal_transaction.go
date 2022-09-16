@@ -2,11 +2,12 @@ package listener
 
 import (
 	"errors"
-	"github.com/goccy/go-json"
+	"github.com/prometheus/client_golang/prometheus"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
@@ -183,6 +184,8 @@ func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []
 			events = append(events, event)
 			continue
 		}
+
+		filterSkippedEvents.With(prometheus.Labels{"table": item.Table}).Inc()
 
 		logrus.WithFields(
 			logrus.Fields{

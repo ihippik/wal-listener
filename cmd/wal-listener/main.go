@@ -47,6 +47,8 @@ func main() {
 
 			initSentry(cfg.Monitoring.SentryDSN, logger)
 
+			go initMetrics(logger)
+
 			natsConn, err := nats.Connect(cfg.Nats.Address)
 			if err != nil {
 				return fmt.Errorf("nats connection: %w", err)
