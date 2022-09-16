@@ -106,6 +106,7 @@ nats:
   topicPrefix: ""
 monitoring:
  sentryDSN: "dsn string"
+ promAddr: ":2112"
 ```
 
 ## Docker
