@@ -1,10 +1,11 @@
 package listener
 
 import (
-	"github.com/google/uuid"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/magiconair/properties/assert"
 )
@@ -275,6 +276,57 @@ func TestColumn_AssertValue(t *testing.T) {
 			want: &Column{
 				name:      "jsonb",
 				value:     map[string]any{"name": "jsonb"},
+				valueType: 3802,
+				isKey:     false,
+			},
+		},
+		{
+			name: "jsonb array string",
+			fields: fields{
+				name:      "jsonb",
+				valueType: JSONBOID,
+				isKey:     false,
+			},
+			args: args{
+				src: []byte(`["tag1", "tag2"]`),
+			},
+			want: &Column{
+				name:      "jsonb",
+				value:     []any{"tag1", "tag2"},
+				valueType: 3802,
+				isKey:     false,
+			},
+		},
+		{
+			name: "jsonb nil",
+			fields: fields{
+				name:      "jsonb",
+				valueType: JSONBOID,
+				isKey:     false,
+			},
+			args: args{
+				src: nil,
+			},
+			want: &Column{
+				name:      "jsonb",
+				value:     nil,
+				valueType: 3802,
+				isKey:     false,
+			},
+		},
+		{
+			name: "jsonb array empty",
+			fields: fields{
+				name:      "jsonb",
+				valueType: JSONBOID,
+				isKey:     false,
+			},
+			args: args{
+				src: []byte(`[]`),
+			},
+			want: &Column{
+				name:      "jsonb",
+				value:     []any{},
 				valueType: 3802,
 				isKey:     false,
 			},
