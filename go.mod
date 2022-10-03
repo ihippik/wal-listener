@@ -3,7 +3,6 @@ module github.com/ihippik/wal-listener
 go 1.19
 
 require (
-	bou.ke/monkey v1.0.2
 	github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d
 	github.com/evalphobia/logrus_sentry v0.8.2
 	github.com/goccy/go-json v0.9.10
