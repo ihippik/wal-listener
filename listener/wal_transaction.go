@@ -104,15 +104,14 @@ func (c *Column) AssertValue(src []byte) {
 	case UUIDOID:
 		val, err = uuid.Parse(strSrc)
 	case JSONBOID:
+		var m any
 		if src[0] == '[' {
-			m := make([]any, 0)
-			err = json.Unmarshal(src, &m)
-			val = m
+			m = make([]any, 0)
 		} else {
-			m := make(map[string]any)
-			err = json.Unmarshal(src, &m)
-			val = m
+			m = make(map[string]any)
 		}
+		err = json.Unmarshal(src, &m)
+		val = m
 	default:
 		logrus.WithFields(logrus.Fields{"pgtype": c.valueType, "column_name": c.name}).Warnln("unknown oid type")
 		val = strSrc
