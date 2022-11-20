@@ -6,6 +6,8 @@
 [![Build Status](https://travis-ci.com/ihippik/wal-listener.svg?branch=master)](https://travis-ci.com/ihippik/wal-listener)
 ![Codecov](https://img.shields.io/codecov/c/github/ihippik/wal-listener)
 
+![WAL-Listener](wal-listener.png)
+
 A service that helps implement the **Event-driven architecture**.
 
 To maintain the consistency of data in the system, we will use **transactional messaging** - 
