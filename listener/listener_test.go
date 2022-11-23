@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/sirupsen/logrus"
 	"io"
+	"reflect"
 	"testing"
 	"time"
 
-	"bou.ke/monkey"
 	"github.com/google/uuid"
+	"github.com/sirupsen/logrus"
+
 	"github.com/jackc/pgx"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -18,7 +19,10 @@ import (
 	"github.com/ihippik/wal-listener/config"
 )
 
-var errSimple = errors.New("some err")
+var (
+	errSimple = errors.New("some err")
+	epochNano = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
+)
 
 func TestListener_slotIsExists(t *testing.T) {
 	repo := new(repositoryMock)
@@ -182,6 +186,10 @@ func TestListener_Stop(t *testing.T) {
 	}
 }
 
+func nowInNano() uint64 {
+	return uint64(time.Now().UnixNano()-epochNano) / uint64(1000)
+}
+
 func TestListener_SendStandbyStatus(t *testing.T) {
 	repl := new(replicatorMock)
 	type fields struct {
@@ -191,14 +199,11 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
 		repl.On(
 			"SendStandbyStatus",
-			status,
+			standByStatusMatcher(status),
 		).
 			Return(err).
 			Once()
 	}
-	wayback := time.Date(1974, time.May, 19, 1, 2, 3, 4, time.UTC)
-	patch := monkey.Patch(time.Now, func() time.Time { return wayback })
-	defer patch.Unpatch()
 
 	tests := []struct {
 		name    string
@@ -214,7 +219,7 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 						WalWritePosition: 0,
 						WalFlushPosition: 0,
 						WalApplyPosition: 0,
-						ClientTime:       18445935546232551617,
+						ClientTime:       nowInNano(),
 						ReplyRequested:   0,
 					},
 					nil,
@@ -233,7 +238,7 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 						WalWritePosition: 0,
 						WalFlushPosition: 0,
 						WalApplyPosition: 0,
-						ClientTime:       18445935546232551617,
+						ClientTime:       nowInNano(),
 						ReplyRequested:   0,
 					},
 					errSimple,
@@ -260,6 +265,23 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 	}
 }
 
+func abs(val int64) int64 {
+	if val < 0 {
+		return val * -1
+	}
+	return val
+}
+
+func standByStatusMatcher(want *pgx.StandbyStatus) any {
+	return mock.MatchedBy(func(got *pgx.StandbyStatus) bool {
+		return want.ReplyRequested == got.ReplyRequested &&
+			want.WalApplyPosition == got.WalApplyPosition &&
+			want.WalFlushPosition == got.WalFlushPosition &&
+			want.WalWritePosition == got.WalWritePosition &&
+			abs(int64(got.ClientTime)-int64(want.ClientTime)) < 1000
+	})
+}
+
 func TestListener_AckWalMessage(t *testing.T) {
 	repl := new(replicatorMock)
 	type fields struct {
@@ -272,14 +294,11 @@ func TestListener_AckWalMessage(t *testing.T) {
 	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
 		repl.On(
 			"SendStandbyStatus",
-			status,
+			standByStatusMatcher(status),
 		).
 			Return(err).
 			Once()
 	}
-	wayback := time.Date(1974, time.May, 19, 1, 2, 3, 4, time.UTC)
-	patch := monkey.Patch(time.Now, func() time.Time { return wayback })
-	defer patch.Unpatch()
 
 	tests := []struct {
 		name    string
@@ -296,7 +315,7 @@ func TestListener_AckWalMessage(t *testing.T) {
 						WalWritePosition: 24658872,
 						WalFlushPosition: 24658872,
 						WalApplyPosition: 24658872,
-						ClientTime:       18445935546232551617,
+						ClientTime:       nowInNano(),
 						ReplyRequested:   0,
 					},
 					nil,
@@ -318,7 +337,7 @@ func TestListener_AckWalMessage(t *testing.T) {
 						WalWritePosition: 24658872,
 						WalFlushPosition: 24658872,
 						WalApplyPosition: 24658872,
-						ClientTime:       18445935546232551617,
+						ClientTime:       nowInNano(),
 						ReplyRequested:   0,
 					},
 					errSimple,
@@ -365,10 +384,6 @@ func TestListener_Stream(t *testing.T) {
 		timeout time.Duration
 	}
 
-	wayback := time.Date(1974, time.May, 19, 1, 2, 3, 4, time.UTC)
-	patch := monkey.Patch(time.Now, func() time.Time { return wayback })
-	defer patch.Unpatch()
-
 	setParseWalMessageOnce := func(msg []byte, tx *WalTransaction, err error) {
 		prs.On("ParseWalMessage", msg, tx).Return(err).Once().
 			After(10 * time.Millisecond)
@@ -391,16 +406,32 @@ func TestListener_Stream(t *testing.T) {
 		).Return(msg, err).Once().After(10 * time.Millisecond)
 	}
 
-	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
+	setSendStandbyStatus := func(want *pgx.StandbyStatus, err error) {
 		repl.On(
 			"SendStandbyStatus",
-			status,
+			mock.MatchedBy(func(got *pgx.StandbyStatus) bool {
+				return want.ReplyRequested == got.ReplyRequested &&
+					want.WalFlushPosition == got.WalFlushPosition &&
+					want.WalWritePosition == got.WalWritePosition &&
+					abs(int64(want.ClientTime)-int64(got.ClientTime)) < 100000
+			}),
 		).
 			Return(err).After(10 * time.Millisecond)
 	}
 
-	setPublish := func(subject string, event Event, err error) {
-		publ.On("Publish", subject, event).Return(err).
+	setPublish := func(subject string, want Event, err error) {
+		publ.On("Publish", subject, mock.MatchedBy(func(got Event) bool {
+			ok := want.Action == got.Action &&
+				reflect.DeepEqual(want.Data, got.Data) &&
+				want.ID == got.ID &&
+				want.Schema == got.Schema &&
+				want.Table == got.Table &&
+				want.EventTime.Sub(got.EventTime).Milliseconds() < 1000
+			if !ok {
+				t.Errorf("- want + got\n- %#+v\n+ %#+v", want, got)
+			}
+			return ok
+		})).Return(err).
 			Once().
 			After(10 * time.Millisecond)
 	}
@@ -429,7 +460,7 @@ func TestListener_Stream(t *testing.T) {
 						WalWritePosition: 0,
 						WalFlushPosition: 0,
 						WalApplyPosition: 0,
-						ClientTime:       18445935546232551617,
+						ClientTime:       nowInNano(),
 						ReplyRequested:   0,
 					},
 					nil,
@@ -439,7 +470,7 @@ func TestListener_Stream(t *testing.T) {
 						WalWritePosition: 10,
 						WalFlushPosition: 10,
 						WalApplyPosition: 10,
-						ClientTime:       18445935546232551617,
+						ClientTime:       nowInNano(),
 						ReplyRequested:   0,
 					},
 					nil,
@@ -464,7 +495,7 @@ func TestListener_Stream(t *testing.T) {
 						Table:     "users",
 						Action:    "INSERT",
 						Data:      map[string]interface{}{"id": 1},
-						EventTime: wayback,
+						EventTime: time.Now(),
 					},
 					nil,
 				)
@@ -557,7 +588,7 @@ func TestListener_Stream(t *testing.T) {
 						WalWritePosition: 0,
 						WalFlushPosition: 0,
 						WalApplyPosition: 0,
-						ClientTime:       18445935546232551617,
+						ClientTime:       nowInNano(),
 						ReplyRequested:   0,
 					},
 					nil,
@@ -615,7 +646,7 @@ func TestListener_Stream(t *testing.T) {
 						WalWritePosition: 0,
 						WalFlushPosition: 0,
 						WalApplyPosition: 0,
-						ClientTime:       18445935546232551617,
+						ClientTime:       nowInNano(),
 						ReplyRequested:   0,
 					},
 					nil,
@@ -684,7 +715,7 @@ func TestListener_Stream(t *testing.T) {
 						WalWritePosition: 10,
 						WalFlushPosition: 10,
 						WalApplyPosition: 10,
-						ClientTime:       18445935546232551617,
+						ClientTime:       nowInNano(),
 						ReplyRequested:   0,
 					},
 					nil,
@@ -694,7 +725,7 @@ func TestListener_Stream(t *testing.T) {
 						WalWritePosition: 0,
 						WalFlushPosition: 0,
 						WalApplyPosition: 0,
-						ClientTime:       18445935546232551617,
+						ClientTime:       nowInNano(),
 						ReplyRequested:   0,
 					},
 					nil,
@@ -735,7 +766,7 @@ func TestListener_Stream(t *testing.T) {
 						Table:     "users",
 						Action:    "INSERT",
 						Data:      map[string]interface{}{"id": 1},
-						EventTime: wayback,
+						EventTime: time.Now(),
 					},
 					errSimple,
 				)
@@ -744,7 +775,7 @@ func TestListener_Stream(t *testing.T) {
 						WalWritePosition: 10,
 						WalFlushPosition: 10,
 						WalApplyPosition: 10,
-						ClientTime:       18445935546232551617,
+						ClientTime:       nowInNano(),
 						ReplyRequested:   0,
 					},
 					nil,
