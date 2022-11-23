@@ -2,10 +2,11 @@ package listener
 
 import (
 	"errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
@@ -103,7 +104,12 @@ func (c *Column) AssertValue(src []byte) {
 	case UUIDOID:
 		val, err = uuid.Parse(strSrc)
 	case JSONBOID:
-		m := make(map[string]any)
+		var m any
+		if src[0] == '[' {
+			m = make([]any, 0)
+		} else {
+			m = make(map[string]any)
+		}
 		err = json.Unmarshal(src, &m)
 		val = m
 	default:
