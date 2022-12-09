@@ -20,7 +20,8 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 	}
 	type args struct {
 		relationID int32
-		rows       []TupleData
+		oldRows    []TupleData
+		newRows    []TupleData
 		kind       ActionKind
 	}
 	now := time.Now()
@@ -55,7 +56,12 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 			},
 			args: args{
 				relationID: 10,
-				rows: []TupleData{
+				oldRows: []TupleData{
+					{
+						Value: []byte{56, 48},
+					},
+				},
+				newRows: []TupleData{
 					{
 						Value: []byte{49, 49},
 					},
@@ -66,7 +72,15 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 				Schema: "public",
 				Table:  "users",
 				Kind:   ActionKindUpdate,
-				Columns: []Column{
+				OldColumns: []Column{
+					{
+						name:      "id",
+						value:     80,
+						valueType: Int4OID,
+						isKey:     true,
+					},
+				},
+				NewColumns: []Column{
 					{
 						name:      "id",
 						value:     11,
@@ -101,7 +115,8 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 			},
 			args: args{
 				relationID: 10,
-				rows:       nil,
+				oldRows:    nil,
+				newRows:    nil,
 				kind:       ActionKindUpdate,
 			},
 			wantA:   ActionData{},
@@ -117,7 +132,7 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 				RelationStore: tt.fields.RelationStore,
 				Actions:       tt.fields.Actions,
 			}
-			gotA, err := w.CreateActionData(tt.args.relationID, tt.args.rows, tt.args.kind)
+			gotA, err := w.CreateActionData(tt.args.relationID, tt.args.oldRows, tt.args.newRows, tt.args.kind)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CreateActionData() error = %v, wantErr %v", err, tt.wantErr)
 				return

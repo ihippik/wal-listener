@@ -22,7 +22,8 @@ type Event struct {
 	Schema    string                 `json:"schema"`
 	Table     string                 `json:"table"`
 	Action    string                 `json:"action"`
-	Data      map[string]interface{} `json:"data"`
+	OldData   map[string]interface{} `json:"oldData"`
+	NewData   map[string]interface{} `json:"newData"`
 	EventTime time.Time              `json:"commitTime"`
 }
 

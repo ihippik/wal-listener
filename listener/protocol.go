@@ -97,7 +97,7 @@ type (
 		// Identifies the following TupleData message as a new tuple.
 		NewTuple bool
 		// TupleData message part representing the contents of new tuple.
-		Row []TupleData
+		NewRow []TupleData
 	}
 
 	// Update message format.
@@ -108,13 +108,12 @@ type (
 		KeyTuple bool
 		// Identifies the following TupleData message as a old tuple.
 		OldTuple bool
+		// TupleData message part representing the contents of the old tuple or primary key (Only present if the previous 'O' or 'K' part is present.)
+		OldRow []TupleData
 		// Identifies the following TupleData message as a new tuple.
 		NewTuple bool
 		// TupleData message part representing the contents of new tuple.
-		Row []TupleData
-		// TupleData message part representing the contents of the old tuple or primary key.
-		//Only present if the previous 'O' or 'K' part is present.
-		OldRow []TupleData
+		NewRow []TupleData
 	}
 
 	// Delete message format.
@@ -126,7 +125,7 @@ type (
 		// Identifies the following TupleData message as a old tuple.
 		OldTuple bool
 		// TupleData message part representing the contents of new tuple.
-		Row []TupleData
+		OldRow []TupleData
 	}
 )
 

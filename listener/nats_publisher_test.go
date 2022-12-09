@@ -44,10 +44,10 @@ func TestEvent_GetSubjectName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := &Event{
-				Schema: tt.fields.Schema,
-				Table:  tt.fields.Table,
-				Action: tt.fields.Action,
-				Data:   tt.fields.Data,
+				Schema:  tt.fields.Schema,
+				Table:   tt.fields.Table,
+				Action:  tt.fields.Action,
+				NewData: tt.fields.Data,
 			}
 			if got := e.SubjectName(tt.args.cfg); got != tt.want {
 				t.Errorf("SubjectName() = %v, want %v", got, tt.want)

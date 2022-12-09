@@ -10,16 +10,16 @@
 
 A service that helps implement the **Event-driven architecture**.
 
-To maintain the consistency of data in the system, we will use **transactional messaging** - 
+To maintain the consistency of data in the system, we will use **transactional messaging** -
 publishing events in a single transaction with a domain model change.
 
-The service allows you to subscribe to changes in the PostgreSQL database using its logical decoding capability 
+The service allows you to subscribe to changes in the PostgreSQL database using its logical decoding capability
 and publish them to the NATS Streaming server.
 
 ## Logic of work
 To receive events about data changes in our PostgreSQL DB
   we use the standard logic decoding module (**pgoutput**) This module converts
- changes read from the WAL into a logical replication protocol.
+changes read from the WAL into a logical replication protocol.
   And we already consume all this information on our side.
 Then we filter out only the events we need and publish them in the queue
 
@@ -27,19 +27,24 @@ Then we filter out only the events we need and publish them in the queue
 
 NATS JetStream is used as a message broker.
 Service publishes the following structure.
-The name of the topic for subscription to receive messages is formed from the prefix of the topic, 
+The name of the topic for subscription to receive messages is formed from the prefix of the topic,
 the name of the database and the name of the table `prefix + schema_table`.
 
 ```go
 {
-	ID        uuid.UUID   # unique ID           
-	Schema    string                 
-	Table     string                 
-	Action    string                 
-	Data      map[string]any 
-	EventTime time.Time   # commit time          
+	ID        uuid.UUID       # unique ID
+	Schema    string
+	Table     string
+	Action    string
+	OldData   map[string]any  # Old data (see note #1)
+	NewData   map[string]any
+	EventTime time.Time       # commit time
 }
 ```
+
+Notes:
+
+1. To receive OldData you need to change REPLICA IDENTITY to FULL as described here: [#SQL-ALTERTABLE-REPLICA-IDENTITY](https://www.postgresql.org/docs/current/sql-altertable.html#SQL-ALTERTABLE-REPLICA-IDENTITY)
 
 Messages are published to NATS (JetStream) at least once!
 
@@ -54,16 +59,16 @@ databases:
         - update
 
 ```
-This filter means that we only process events occurring with the `users` table, 
+This filter means that we only process events occurring with the `users` table,
 and in particular `insert` and `update` data.
 
 ### Topic mapping
-By default, output NATS topic name consist of prefix, DB schema, and DB table name, 
+By default, output NATS topic name consist of prefix, DB schema, and DB table name,
 but if you want to send all update in one topic you should be configured the topic map:
 ```yaml
-  topicsMap:
-      main_users: "notifier"
-      main_customers: "notifier"
+topicsMap:
+  main_users: "notifier"
+  main_customers: "notifier"
 ```
 
 ## DB setting
@@ -71,7 +76,7 @@ You must make the following settings in the db configuration (postgresql.conf)
 * wal_level >= “logical”
 * max_replication_slots >= 1
 
-The publication & slot created automatically when the service starts (for all tables and all actions). 
+The publication & slot created automatically when the service starts (for all tables and all actions).
 You can delete the default publication and create your own (name: _wal-listener_) with the necessary filtering conditions, and then the filtering will occur at the database level and not at the application level.
 
 https://www.postgresql.org/docs/current/sql-createpublication.html
@@ -90,7 +95,7 @@ listener:
         - insert
         - update
   topicsMap:
-      schema_table_name: "notifier"
+    schema_table_name: "notifier"
 logger:
   caller: false
   level: info
@@ -107,8 +112,8 @@ nats:
   streamName: "wal_listener"
   topicPrefix: ""
 monitoring:
- sentryDSN: "dsn string"
- promAddr: ":2112"
+  sentryDSN: "dsn string"
+  promAddr: ":2112"
 ```
 
 ## Docker
