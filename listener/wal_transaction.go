@@ -84,7 +84,7 @@ func (c *Column) AssertValue(src []byte) {
 
 	const (
 		timestampLayout       = "2006-01-02 15:04:05"
-		timestampWithTZLayout = "2006-01-02 15:04:05.999999999+00"
+		timestampWithTZLayout = "2006-01-02 15:04:05.999999999-07"
 	)
 
 	switch c.valueType {
