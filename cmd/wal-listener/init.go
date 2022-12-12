@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -9,10 +11,11 @@ import (
 	"github.com/jackc/pgx"
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/sethvargo/go-envconfig"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
-	"github.com/ihippik/wal-listener/config"
+	"github.com/banked/wal-listener/v2/config"
 )
 
 // logger log levels.
@@ -24,7 +27,7 @@ const (
 )
 
 func getVersion() string {
-	var version = "unknown"
+	version := "unknown"
 
 	info, ok := debug.ReadBuildInfo()
 	if ok {
@@ -50,6 +53,10 @@ func getConf(path string) (*config.Config, error) {
 
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unable to decode into config struct: %w", err)
+	}
+
+	if err := envconfig.Process(context.Background(), &cfg); err != nil {
+		return nil, fmt.Errorf("unable to process environment variables into  config struct: %w", err)
 	}
 
 	return &cfg, nil
@@ -107,7 +114,7 @@ func createStream(logger *logrus.Entry, js nats.JetStreamContext, streamName str
 	}
 
 	if stream == nil {
-		var streamSubjects = streamName + ".*"
+		streamSubjects := streamName + ".*"
 
 		if _, err = js.AddStream(&nats.StreamConfig{
 			Name:     streamName,
@@ -120,6 +127,30 @@ func createStream(logger *logrus.Entry, js nats.JetStreamContext, streamName str
 	}
 
 	return nil
+}
+
+func initNats(cfg config.NatsCfg) (*nats.Conn, error) {
+	opts := []nats.Option{}
+
+	if mtls := cfg.MTLS; mtls.Enabled {
+		if mtls.InsecureSkipVerify {
+			opts = append(
+				opts,
+				nats.Secure(&tls.Config{InsecureSkipVerify: true}),
+			)
+		} else {
+			opts = append(
+				opts,
+				nats.ClientCert(
+					fmt.Sprintf("%s/%s", mtls.CertPath, mtls.CertFile),
+					fmt.Sprintf("%s/%s", mtls.CertPath, mtls.KeyFile),
+				),
+				nats.RootCAs(fmt.Sprintf("%s/%s", mtls.CertPath, mtls.CAFile)),
+			)
+		}
+	}
+
+	return nats.Connect(cfg.Address, opts...)
 }
 
 func initSentry(dsn string, logger *logrus.Entry) {
@@ -143,18 +174,7 @@ func initSentry(dsn string, logger *logrus.Entry) {
 }
 
 // initPgxConnections initialise db and replication connections.
-func initPgxConnections(cfg config.DatabaseCfg) (*pgx.Conn, *pgx.ReplicationConn, error) {
-	pgxConf := pgx.ConnConfig{
-		// TODO logger
-		LogLevel: pgx.LogLevelInfo,
-		Logger:   pgxLogger{},
-		Host:     cfg.Host,
-		Port:     cfg.Port,
-		Database: cfg.Name,
-		User:     cfg.User,
-		Password: cfg.Password,
-	}
-
+func initPgxConnections(pgxConf pgx.ConnConfig) (*pgx.Conn, *pgx.ReplicationConn, error) {
 	pgConn, err := pgx.Connect(pgxConf)
 	if err != nil {
 		return nil, nil, fmt.Errorf("db connection: %w", err)

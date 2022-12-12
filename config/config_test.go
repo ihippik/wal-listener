@@ -28,11 +28,7 @@ func TestConfig_Validate(t *testing.T) {
 					HeartbeatInterval: 10,
 				},
 				Database: DatabaseCfg{
-					Host:     "host",
-					Port:     10,
-					Name:     "db",
-					User:     "usr",
-					Password: "pass",
+					DSN: "http://user:password@localhost:5432/name",
 				},
 				Nats: NatsCfg{
 					Address:     "addr",
@@ -50,11 +46,7 @@ func TestConfig_Validate(t *testing.T) {
 					HeartbeatInterval: 10,
 				},
 				Database: DatabaseCfg{
-					Host:     "host",
-					Port:     10,
-					Name:     "db",
-					User:     "usr",
-					Password: "pass",
+					DSN: "http://user:password@localhost:5432/name",
 				},
 				Nats: NatsCfg{
 					Address:     "addr",
@@ -74,9 +66,7 @@ func TestConfig_Validate(t *testing.T) {
 					HeartbeatInterval: 10,
 				},
 				Database: DatabaseCfg{
-					Name:     "db",
-					User:     "usr",
-					Password: "pass",
+					DSN: "",
 				},
 				Nats: NatsCfg{
 					Address:     "addr",
@@ -84,7 +74,7 @@ func TestConfig_Validate(t *testing.T) {
 					TopicPrefix: "prefix",
 				},
 			},
-			wantErr: errors.New("Database.Host: non zero value required;Database.Port: non zero value required"),
+			wantErr: errors.New("Database.DSN: non zero value required"),
 		},
 		{
 			name: "empty nats addr cfg",
@@ -96,11 +86,7 @@ func TestConfig_Validate(t *testing.T) {
 					HeartbeatInterval: 10,
 				},
 				Database: DatabaseCfg{
-					Host:     "host",
-					Port:     10,
-					Name:     "db",
-					User:     "usr",
-					Password: "pass",
+					DSN: "http://user:password@localhost:5432/name",
 				},
 				Nats: NatsCfg{
 					StreamName:  "stream",
@@ -119,11 +105,7 @@ func TestConfig_Validate(t *testing.T) {
 					HeartbeatInterval: 10,
 				},
 				Database: DatabaseCfg{
-					Host:     "host",
-					Port:     10,
-					Name:     "db",
-					User:     "usr",
-					Password: "pass",
+					DSN: "http://user:password@localhost:5432/name",
 				},
 				Nats: NatsCfg{
 					Address:     "addr",
