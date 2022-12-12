@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nats-io/nats.go"
+	"github.com/jackc/pgx"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 
-	"github.com/ihippik/wal-listener/listener"
+	"github.com/banked/wal-listener/v2/listener"
 )
 
 func main() {
@@ -49,7 +49,7 @@ func main() {
 
 			go initMetrics(cfg.Monitoring.PromAddr, logger)
 
-			natsConn, err := nats.Connect(cfg.Nats.Address)
+			natsConn, err := initNats(cfg.Nats)
 			if err != nil {
 				return fmt.Errorf("nats connection: %w", err)
 			}
@@ -64,7 +64,12 @@ func main() {
 				return fmt.Errorf("create Nats stream: %w", err)
 			}
 
-			conn, rConn, err := initPgxConnections(cfg.Database)
+			pgxConf, err := pgx.ParseURI(cfg.Database.DSN)
+			if err != nil {
+				return fmt.Errorf("failed to parse database DSN: %w", err)
+			}
+
+			conn, rConn, err := initPgxConnections(pgxConf)
 			if err != nil {
 				return fmt.Errorf("pgx connection: %w", err)
 			}
@@ -76,6 +81,7 @@ func main() {
 				rConn,
 				listener.NewNatsPublisher(js),
 				listener.NewBinaryParser(binary.BigEndian),
+				fmt.Sprintf("%s_%s", cfg.Listener.SlotName, pgxConf.Database),
 			)
 
 			if err := service.Process(c.Context); err != nil {

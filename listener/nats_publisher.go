@@ -8,7 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 
-	"github.com/ihippik/wal-listener/config"
+	"github.com/banked/wal-listener/v2/config"
 )
 
 // NatsPublisher represent event publisher.

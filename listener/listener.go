@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sirupsen/logrus"
 
-	"github.com/ihippik/wal-listener/config"
+	"github.com/banked/wal-listener/v2/config"
 )
 
 const errorBufferSize = 100
@@ -85,11 +85,12 @@ func NewWalListener(
 	repl replication,
 	publ publisher,
 	parser parser,
+	slotName string,
 ) *Listener {
 	return &Listener{
-		log:        log,
-		slotName:   fmt.Sprintf("%s_%s", cfg.Listener.SlotName, cfg.Database.Name),
 		cfg:        cfg,
+		log:        log,
+		slotName:   slotName,
 		publisher:  publ,
 		repository: repo,
 		replicator: repl,
@@ -279,7 +280,7 @@ func (l *Listener) Stream(ctx context.Context) {
 			}
 
 			if msg.ServerHeartbeat != nil {
-				//FIXME panic if there have been no messages for a long time.
+				// FIXME panic if there have been no messages for a long time.
 				l.log.WithFields(logrus.Fields{
 					"server_wal_end": msg.ServerHeartbeat.ServerWalEnd,
 					"server_time":    msg.ServerHeartbeat.ServerTime,
