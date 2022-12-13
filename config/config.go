@@ -8,52 +8,52 @@ import (
 
 // Config for wal-listener
 type Config struct {
-	Listener   ListenerCfg   `env:",prefix=LISTENER"`
+	Listener   ListenerCfg   `env:",prefix=LISTENER_"`
 	Database   DatabaseCfg   `env:",prefix=DB_"`
-	Nats       NatsCfg       `env:",prefix=NATS"`
-	Logger     LoggerCfg     `env:",prefix=LOG"`
-	Monitoring MonitoringCfg `env:",prefix=MONITOR"`
+	Nats       NatsCfg       `env:",prefix=NATS_"`
+	Logger     LoggerCfg     `env:",prefix=LOG_"`
+	Monitoring MonitoringCfg `env:",prefix=MONITOR_"`
 }
 
 // ListenerCfg path of the listener config.
 type ListenerCfg struct {
-	SlotName          string        `valid:"required" env:"SLOT_NAME"`
-	AckTimeout        time.Duration `env:"ACK_TIMEOUT"`
-	RefreshConnection time.Duration `valid:"required" env:"REFRESH_TIMEOUT"`
-	HeartbeatInterval time.Duration `valid:"required" env:"HEARTBEAT_INTERVAL"`
-	Filter            FilterStruct  `env:"FILTER"`
+	SlotName          string        `valid:"required" env:"SLOT_NAME,overwrite"`
+	AckTimeout        time.Duration `env:"ACK_TIMEOUT,overwrite"`
+	RefreshConnection time.Duration `valid:"required" env:"REFRESH_TIMEOUT,overwrite"`
+	HeartbeatInterval time.Duration `valid:"required" env:"HEARTBEAT_INTERVAL,overwrite"`
+	Filter            FilterStruct  `env:"FILTER,overwrite"`
 	TopicsMap         map[string]string
 }
 
 // NatsCfg path of the NATS config.
 type NatsCfg struct {
-	Address     string      `valid:"required" env:"ADDRESS"`
-	StreamName  string      `valid:"required" env:"STREAM_NAME"`
-	TopicPrefix string      `env:"TOPIC_PREFIX"`
-	MTLS        NatsMtlsCfg `env:"MTLS"`
+	Address     string      `valid:"required" env:"ADDRESS,overwrite"`
+	StreamName  string      `valid:"required" env:"STREAM_NAME,overwrite"`
+	TopicPrefix string      `env:"TOPIC_PREFIX,overwrite"`
+	MTLS        NatsMtlsCfg `env:",prefix=MTLS_"`
 }
 
 // Nats TLS Coniguration
 type NatsMtlsCfg struct {
-	CertPath           string `env:"CERT_PATH,default=/etc/nats-certs/clients"`
-	CertFile           string `env:"CERT_FILE,default=tls.crt"`
-	KeyFile            string `env:"KEY_FILE,default=tls.key"`
-	CAFile             string `env:"CA_FILE,default=ca.crt"`
-	InsecureSkipVerify bool   `env:"INSECURE_SKIP_VERIFY,default=false"`
-	Enabled            bool   `env:"ENABLED,default=false"`
+	CertPath           string `env:"CERT_PATH,overwrite,default=/etc/nats-certs/clients"`
+	CertFile           string `env:"CERT_FILE,overwrite,default=tls.crt"`
+	KeyFile            string `env:"KEY_FILE,overwrite,default=tls.key"`
+	CAFile             string `env:"CA_FILE,overwrite,default=ca.crt"`
+	InsecureSkipVerify bool   `env:"INSECURE_SKIP_VERIFY,overwrite,default=false"`
+	Enabled            bool   `env:"ENABLED,overwrite,default=false"`
 }
 
 // MonitoringCfg monitoring configuration.
 type MonitoringCfg struct {
-	SentryDSN string `env:"SENTRY_DSN`
-	PromAddr  string `env:"PROMETHEUS_ADDRESS"`
+	SentryDSN string `env:"SENTRY_DSN,overwrite`
+	PromAddr  string `env:"PROMETHEUS_ADDRESS,overwrite"`
 }
 
 // LoggerCfg path of the logger config.
 type LoggerCfg struct {
-	Caller bool   `env:"CALLER"`
-	Level  string `env:"LEVEL"`
-	Format string `env:"FORMAT"`
+	Caller bool   `env:"CALLER,overwrite"`
+	Level  string `env:"LEVEL,overwrite"`
+	Format string `env:"FORMAT,overwrite"`
 }
 
 // DatabaseCfg path of the PostgreSQL DB config.
