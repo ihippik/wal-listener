@@ -422,7 +422,7 @@ func TestListener_Stream(t *testing.T) {
 	setPublish := func(subject string, want Event, err error) {
 		publ.On("Publish", subject, mock.MatchedBy(func(got Event) bool {
 			ok := want.Action == got.Action &&
-				reflect.DeepEqual(want.Data, got.Data) &&
+				reflect.DeepEqual(want.NewData, got.NewData) &&
 				want.ID == got.ID &&
 				want.Schema == got.Schema &&
 				want.Table == got.Table &&
@@ -494,7 +494,7 @@ func TestListener_Stream(t *testing.T) {
 						Schema:    "public",
 						Table:     "users",
 						Action:    "INSERT",
-						Data:      map[string]interface{}{"id": 1},
+						NewData:   map[string]interface{}{"id": 1},
 						EventTime: time.Now(),
 					},
 					nil,
@@ -765,7 +765,7 @@ func TestListener_Stream(t *testing.T) {
 						Schema:    "public",
 						Table:     "users",
 						Action:    "INSERT",
-						Data:      map[string]interface{}{"id": 1},
+						NewData:   map[string]interface{}{"id": 1},
 						EventTime: time.Now(),
 					},
 					errSimple,

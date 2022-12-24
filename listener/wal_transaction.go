@@ -52,10 +52,11 @@ type RelationData struct {
 
 // ActionData kind of WAL message data.
 type ActionData struct {
-	Schema  string
-	Table   string
-	Kind    ActionKind
-	Columns []Column
+	Schema     string
+	Table      string
+	Kind       ActionKind
+	OldColumns []Column
+	NewColumns []Column
 }
 
 // Column of the table with which changes occur.
@@ -83,7 +84,7 @@ func (c *Column) AssertValue(src []byte) {
 
 	const (
 		timestampLayout       = "2006-01-02 15:04:05"
-		timestampWithTZLayout = "2006-01-02 15:04:05.999999999+00"
+		timestampWithTZLayout = "2006-01-02 15:04:05.999999999-07"
 	)
 
 	switch c.valueType {
@@ -133,8 +134,9 @@ func (w *WalTransaction) Clear() {
 }
 
 // CreateActionData create action  from WAL message data.
-func (w *WalTransaction) CreateActionData(relationID int32, rows []TupleData, kind ActionKind) (a ActionData, err error) {
+func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData, newRows []TupleData, kind ActionKind) (a ActionData, err error) {
 	rel, ok := w.RelationStore[relationID]
+
 	if !ok {
 		return a, errors.New("relation not found")
 	}
@@ -145,19 +147,29 @@ func (w *WalTransaction) CreateActionData(relationID int32, rows []TupleData, ki
 		Kind:   kind,
 	}
 
-	var columns []Column
-
-	for num, row := range rows {
+	var oldColumns []Column
+	for num, row := range oldRows {
 		column := Column{
 			name:      rel.Columns[num].name,
 			valueType: rel.Columns[num].valueType,
 			isKey:     rel.Columns[num].isKey,
 		}
 		column.AssertValue(row.Value)
-		columns = append(columns, column)
+		oldColumns = append(oldColumns, column)
 	}
+	a.OldColumns = oldColumns
 
-	a.Columns = columns
+	var newColumns []Column
+	for num, row := range newRows {
+		column := Column{
+			name:      rel.Columns[num].name,
+			valueType: rel.Columns[num].valueType,
+			isKey:     rel.Columns[num].isKey,
+		}
+		column.AssertValue(row.Value)
+		newColumns = append(newColumns, column)
+	}
+	a.NewColumns = newColumns
 
 	return a, nil
 }
@@ -168,10 +180,14 @@ func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []
 	var events []Event
 
 	for _, item := range w.Actions {
-		data := make(map[string]interface{})
+		oldData := make(map[string]interface{})
+		for _, val := range item.OldColumns {
+			oldData[val.name] = val.value
+		}
 
-		for _, val := range item.Columns {
-			data[val.name] = val.value
+		newData := make(map[string]interface{})
+		for _, val := range item.NewColumns {
+			newData[val.name] = val.value
 		}
 
 		event := Event{
@@ -179,7 +195,8 @@ func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []
 			Schema:    item.Schema,
 			Table:     item.Table,
 			Action:    item.Kind.string(),
-			Data:      data,
+			OldData:   oldData,
+			NewData:   newData,
 			EventTime: *w.CommitTime,
 		}
 

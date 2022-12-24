@@ -21,7 +21,7 @@ func (p *parserMock) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 			Schema: "public",
 			Table:  "users",
 			Kind:   "INSERT",
-			Columns: []Column{
+			NewColumns: []Column{
 				{
 					name:      "id",
 					value:     1,

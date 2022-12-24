@@ -109,7 +109,8 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		action, err := tx.CreateActionData(
 			insert.RelationID,
-			insert.Row,
+			nil,
+			insert.NewRow,
 			ActionKindInsert,
 		)
 
@@ -130,7 +131,8 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		action, err := tx.CreateActionData(
 			upd.RelationID,
-			upd.Row,
+			upd.OldRow,
+			upd.NewRow,
 			ActionKindUpdate,
 		)
 		if err != nil {
@@ -150,7 +152,8 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		action, err := tx.CreateActionData(
 			del.RelationID,
-			del.Row,
+			del.OldRow,
+			nil,
 			ActionKindDelete,
 		)
 		if err != nil {
@@ -185,7 +188,7 @@ func (p *BinaryParser) getInsertMsg() Insert {
 	return Insert{
 		RelationID: p.readInt32(),
 		NewTuple:   p.buffer.Next(1)[0] == NewTupleDataType,
-		Row:        p.readTupleData(),
+		NewRow:     p.readTupleData(),
 	}
 }
 
@@ -194,7 +197,7 @@ func (p *BinaryParser) getDeleteMsg() Delete {
 		RelationID: p.readInt32(),
 		KeyTuple:   p.charIsExists('K'),
 		OldTuple:   p.charIsExists('O'),
-		Row:        p.readTupleData(),
+		OldRow:     p.readTupleData(),
 	}
 }
 
@@ -208,7 +211,7 @@ func (p *BinaryParser) getUpdateMsg() Update {
 	}
 
 	u.OldTuple = p.charIsExists('N')
-	u.Row = p.readTupleData()
+	u.NewRow = p.readTupleData()
 
 	return u
 }

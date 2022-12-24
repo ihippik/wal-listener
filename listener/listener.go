@@ -88,7 +88,7 @@ func NewWalListener(
 ) *Listener {
 	return &Listener{
 		log:        log,
-		slotName:   fmt.Sprintf("%s_%s", cfg.Listener.SlotName, cfg.Database.Name),
+		slotName:   cfg.Listener.SlotName,
 		cfg:        cfg,
 		publisher:  publ,
 		repository: repo,

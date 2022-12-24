@@ -210,15 +210,15 @@ func TestBinaryParser_getUpdateMsg(t *testing.T) {
 				RelationID: 5,
 				KeyTuple:   false,
 				OldTuple:   true,
-				NewTuple:   false,
-				Row: []TupleData{
-					{
-						Value: []byte{104, 101, 108, 108, 111, 50},
-					},
-				},
 				OldRow: []TupleData{
 					{
 						Value: []byte{104, 101, 108, 108, 111},
+					},
+				},
+				NewTuple: false,
+				NewRow: []TupleData{
+					{
+						Value: []byte{104, 101, 108, 108, 111, 50},
 					},
 				},
 			},
@@ -267,7 +267,7 @@ func TestBinaryParser_getDeleteMsg(t *testing.T) {
 				RelationID: 5,
 				KeyTuple:   false,
 				OldTuple:   true,
-				Row: []TupleData{
+				OldRow: []TupleData{
 					{
 						Value: []byte{105, 100},
 					},
@@ -318,7 +318,7 @@ func TestBinaryParser_getInsertMsg(t *testing.T) {
 			want: Insert{
 				RelationID: 5,
 				NewTuple:   true,
-				Row: []TupleData{
+				NewRow: []TupleData{
 					{
 						Value: []byte{104, 101, 108, 108, 111},
 					},
@@ -600,7 +600,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						Schema: "public",
 						Table:  "users",
 						Kind:   ActionKindInsert,
-						Columns: []Column{
+						NewColumns: []Column{
 							{
 								name:      "id",
 								value:     10,
@@ -685,7 +685,15 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						Schema: "public",
 						Table:  "users",
 						Kind:   ActionKindUpdate,
-						Columns: []Column{
+						OldColumns: []Column{
+							{
+								name:      "id",
+								value:     77,
+								valueType: pgtype.Int4OID,
+								isKey:     true,
+							},
+						},
+						NewColumns: []Column{
 							{
 								name:      "id",
 								value:     80,
@@ -760,7 +768,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						Schema: "public",
 						Table:  "users",
 						Kind:   ActionKindDelete,
-						Columns: []Column{
+						OldColumns: []Column{
 							{
 								name:      "id",
 								value:     77,
