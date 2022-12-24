@@ -170,6 +170,6 @@ func initPgxConnections(cfg config.DatabaseCfg) (*pgx.Conn, *pgx.ReplicationConn
 
 type pgxLogger struct{}
 
-func (l pgxLogger) Log(level pgx.LogLevel, msg string, data map[string]interface{}) {
+func (l pgxLogger) Log(level pgx.LogLevel, msg string, data map[string]any) {
 	logrus.Debugln(msg)
 }

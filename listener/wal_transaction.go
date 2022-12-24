@@ -1,15 +1,13 @@
 package listener
 
 import (
-	"errors"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
 
@@ -136,9 +134,8 @@ func (w *WalTransaction) Clear() {
 // CreateActionData create action  from WAL message data.
 func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData, newRows []TupleData, kind ActionKind) (a ActionData, err error) {
 	rel, ok := w.RelationStore[relationID]
-
 	if !ok {
-		return a, errors.New("relation not found")
+		return a, errRelationNotFound
 	}
 
 	a = ActionData{
@@ -148,6 +145,7 @@ func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData,
 	}
 
 	var oldColumns []Column
+
 	for num, row := range oldRows {
 		column := Column{
 			name:      rel.Columns[num].name,
@@ -157,6 +155,7 @@ func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData,
 		column.AssertValue(row.Value)
 		oldColumns = append(oldColumns, column)
 	}
+
 	a.OldColumns = oldColumns
 
 	var newColumns []Column
@@ -180,14 +179,14 @@ func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []
 	var events []Event
 
 	for _, item := range w.Actions {
-		oldData := make(map[string]interface{})
+		dataOld := make(map[string]any)
 		for _, val := range item.OldColumns {
-			oldData[val.name] = val.value
+			dataOld[val.name] = val.value
 		}
 
-		newData := make(map[string]interface{})
+		data := make(map[string]any)
 		for _, val := range item.NewColumns {
-			newData[val.name] = val.value
+			data[val.name] = val.value
 		}
 
 		event := Event{
@@ -195,8 +194,8 @@ func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []
 			Schema:    item.Schema,
 			Table:     item.Table,
 			Action:    item.Kind.string(),
-			OldData:   oldData,
-			NewData:   newData,
+			DataOld:   dataOld,
+			Data:      data,
 			EventTime: *w.CommitTime,
 		}
 

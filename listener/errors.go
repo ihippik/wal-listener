@@ -9,6 +9,7 @@ var (
 	errMessageLost          = errors.New("messages are lost")
 	errEmptyWALMessage      = errors.New("empty WAL message")
 	errUnknownMessageType   = errors.New("unknown message type")
+	errRelationNotFound     = errors.New("relation not found")
 )
 
 type serviceErr struct {

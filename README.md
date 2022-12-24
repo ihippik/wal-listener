@@ -36,15 +36,11 @@ the name of the database and the name of the table `prefix + schema_table`.
 	Schema    string
 	Table     string
 	Action    string
-	OldData   map[string]any  # Old data (see note #1)
-	NewData   map[string]any
+	Data      map[string]any
+	DataOld   map[string]any  # old data (see DB-settings note #1)
 	EventTime time.Time       # commit time
 }
 ```
-
-Notes:
-
-1. To receive OldData you need to change REPLICA IDENTITY to FULL as described here: [#SQL-ALTERTABLE-REPLICA-IDENTITY](https://www.postgresql.org/docs/current/sql-altertable.html#SQL-ALTERTABLE-REPLICA-IDENTITY)
 
 Messages are published to NATS (JetStream) at least once!
 
@@ -83,6 +79,11 @@ https://www.postgresql.org/docs/current/sql-createpublication.html
 
 If you change the publication, do not forget to change the slot name or delete the current one.
 
+Notes:
+
+1. To receive `DataOld` field you need to change REPLICA IDENTITY to FULL as described here:
+   [#SQL-ALTERTABLE-REPLICA-IDENTITY](https://www.postgresql.org/docs/current/sql-altertable.html#SQL-ALTERTABLE-REPLICA-IDENTITY)
+
 ## Service configuration
 ```yaml
 listener:
@@ -115,6 +116,24 @@ monitoring:
   sentryDSN: "dsn string"
   promAddr: ":2112"
 ```
+
+## Monitoring
+
+### Sentry
+If you specify an DSN-string for the [Sentry](https://sentry.io/) project, the next level errors will be posted there via a hook:
+* Panic
+* Fatal
+* Error
+
+### Prometheus
+You can take metrics by specifying an endpoint for Prometheus in the configuration.
+#### Available metrics
+
+| name                  | description                          | fields             |
+|-----------------------|--------------------------------------|--------------------|
+| published_events      | the total number of published events | `subject`, `table` |
+| filter_skipped_events | the total number of skipped events   | `table`            |
+
 
 ## Docker
 
