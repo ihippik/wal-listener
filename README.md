@@ -137,7 +137,13 @@ You can take metrics by specifying an endpoint for Prometheus in the configurati
 
 ## Docker
 
-You can start the container from the project folder (configuration file is required)
+You can start the container from the project folder (configuration file is required).
+
+Сontainer preparation is carried out with the help of a multi-stage build, which creates after itself auxiliary images of a large size. 
+Please don't forget to delete them:
+```shell
+docker image prune --filter label=stage=builder
+```
 
 #### Docker Hub
 https://hub.docker.com/r/ihippik/wal-listener
