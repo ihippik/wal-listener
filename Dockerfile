@@ -1,4 +1,4 @@
-FROM golang:1.19-bullseye as builder
+FROM golang:1.20.1-bullseye as builder
 LABEL stage=builder
 MAINTAINER Konstantin Makarov <hippik80@gmail.com>
 
