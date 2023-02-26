@@ -9,7 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 
-	"github.com/ihippik/wal-listener/listener"
+	"github.com/ihippik/wal-listener/v2/listener"
 )
 
 func main() {

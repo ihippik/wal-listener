@@ -12,7 +12,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
-	"github.com/ihippik/wal-listener/config"
+	"github.com/ihippik/wal-listener/v2/config"
 )
 
 // logger log levels.

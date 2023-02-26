@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sirupsen/logrus"
 
-	"github.com/ihippik/wal-listener/config"
+	"github.com/ihippik/wal-listener/v2/config"
 )
 
 const errorBufferSize = 100
