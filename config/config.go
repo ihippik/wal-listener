@@ -11,6 +11,7 @@ type Config struct {
 	Listener   ListenerCfg   `env:",prefix=LISTENER_"`
 	Database   DatabaseCfg   `env:",prefix=DB_"`
 	Nats       NatsCfg       `env:",prefix=NATS_"`
+	PubSub     PubSubCfg     `env:",prefix=PUBSUB_"`
 	Logger     LoggerCfg     `env:",prefix=LOG_"`
 	Monitoring MonitoringCfg `env:",prefix=MONITOR_"`
 }
@@ -25,10 +26,17 @@ type ListenerCfg struct {
 	TopicsMap         map[string]string
 }
 
+type PubSubCfg struct {
+	Enabled   bool   `env:"ENABLED,overwrite"`
+	Topic     string `env:"TOPIC,overwrite"`
+	ProjectID string `env:"PROJECT_ID,overwrite"`
+}
+
 // NatsCfg path of the NATS config.
 type NatsCfg struct {
-	Address     string      `valid:"required" env:"ADDRESS,overwrite"`
-	StreamName  string      `valid:"required" env:"STREAM_NAME,overwrite"`
+	Enabled     bool        `env:"ENABLED,overwrite"`
+	Address     string      `env:"ADDRESS,overwrite"`
+	StreamName  string      `env:"STREAM_NAME,overwrite"`
 	TopicPrefix string      `env:"TOPIC_PREFIX,overwrite"`
 	MTLS        NatsMtlsCfg `env:",prefix=MTLS_"`
 }
@@ -45,7 +53,7 @@ type NatsMtlsCfg struct {
 
 // MonitoringCfg monitoring configuration.
 type MonitoringCfg struct {
-	SentryDSN string `env:"SENTRY_DSN,overwrite`
+	SentryDSN string `env:"SENTRY_DSN,overwrite"`
 	PromAddr  string `env:"PROMETHEUS_ADDRESS,overwrite"`
 }
 

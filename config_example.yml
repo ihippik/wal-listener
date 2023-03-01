@@ -24,6 +24,8 @@ nats:
   address: localhost:4222
   streamName: "wal_listener"
   topicPrefix: ""
+pubsub:
+  topic: pubsub_topic_name
 monitoring:
   sentryDSN: ""
   promAddr: ":2112"

@@ -76,44 +76,6 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			wantErr: errors.New("Database.DSN: non zero value required"),
 		},
-		{
-			name: "empty nats addr cfg",
-			fields: fields{
-				Listener: ListenerCfg{
-					SlotName:          "slot",
-					AckTimeout:        10,
-					RefreshConnection: 10,
-					HeartbeatInterval: 10,
-				},
-				Database: DatabaseCfg{
-					DSN: "http://user:password@localhost:5432/name",
-				},
-				Nats: NatsCfg{
-					StreamName:  "stream",
-					TopicPrefix: "prefix",
-				},
-			},
-			wantErr: errors.New("Nats.Address: non zero value required"),
-		},
-		{
-			name: "empty nats stream cfg",
-			fields: fields{
-				Listener: ListenerCfg{
-					SlotName:          "slot",
-					AckTimeout:        10,
-					RefreshConnection: 10,
-					HeartbeatInterval: 10,
-				},
-				Database: DatabaseCfg{
-					DSN: "http://user:password@localhost:5432/name",
-				},
-				Nats: NatsCfg{
-					Address:     "addr",
-					TopicPrefix: "prefix",
-				},
-			},
-			wantErr: errors.New("Nats.StreamName: non zero value required"),
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

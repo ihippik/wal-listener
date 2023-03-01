@@ -22,8 +22,8 @@ const errorBufferSize = 100
 // Logical decoding plugin.
 const pgOutputPlugin = "pgoutput"
 
-type publisher interface {
-	Publish(string, Event) error
+type Publisher interface {
+	Publish(context.Context, *config.Config, *logrus.Entry, Event) error
 }
 
 type parser interface {
@@ -53,7 +53,7 @@ type Listener struct {
 	log        *logrus.Entry
 	mu         sync.RWMutex
 	slotName   string
-	publisher  publisher
+	publisher  Publisher
 	replicator replication
 	repository repository
 	parser     parser
@@ -62,11 +62,18 @@ type Listener struct {
 }
 
 var (
-	publishedEvents = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "published_events",
-		Help: "The total number of published events",
+	publishedNatsEvents = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "published_nats_events",
+		Help: "The total number of published jetstream events",
 	},
 		[]string{"subject", "table"},
+	)
+
+	publishedPubSubEvents = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "published_pubsub_events",
+		Help: "The total number of published pub/sub events",
+	},
+		[]string{"topic", "table"},
 	)
 
 	filterSkippedEvents = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -83,7 +90,7 @@ func NewWalListener(
 	log *logrus.Entry,
 	repo repository,
 	repl replication,
-	publ publisher,
+	publ Publisher,
 	parser parser,
 	slotName string,
 ) *Listener {
@@ -246,24 +253,15 @@ func (l *Listener) Stream(ctx context.Context) {
 				}
 
 				if tx.CommitTime != nil {
-					natsEvents := tx.CreateEventsWithFilter(l.cfg.Listener.Filter.Tables)
+					events := tx.CreateEventsWithFilter(l.cfg.Listener.Filter.Tables)
 
-					for _, event := range natsEvents {
-						subjectName := event.SubjectName(l.cfg)
+					for _, event := range events {
+						log := l.log.WithField("lsn", l.readLSN())
 
-						if err = l.publisher.Publish(subjectName, event); err != nil {
+						if err = l.publisher.Publish(ctx, l.cfg, log, event); err != nil {
 							l.errChannel <- fmt.Errorf("publish message: %w", err)
 							continue
 						}
-
-						publishedEvents.With(prometheus.Labels{"subject": subjectName, "table": event.Table}).Inc()
-
-						l.log.WithFields(logrus.Fields{
-							"subject": subjectName,
-							"action":  event.Action,
-							"table":   event.Table,
-							"lsn":     l.readLSN(),
-						}).Infoln("event was sent")
 					}
 
 					tx.Clear()

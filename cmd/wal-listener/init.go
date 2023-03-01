@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"runtime/debug"
 
+	"cloud.google.com/go/pubsub"
 	"github.com/evalphobia/logrus_sentry"
 	"github.com/jackc/pgx"
 	"github.com/nats-io/nats.go"
@@ -151,6 +152,15 @@ func initNats(cfg config.NatsCfg) (*nats.Conn, error) {
 	}
 
 	return nats.Connect(cfg.Address, opts...)
+}
+
+func initPubSub(config config.PubSubCfg) (*pubsub.Client, error) {
+	client, err := pubsub.NewClient(context.Background(), config.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("pubsub connect: %w", err)
+	}
+
+	return client, nil
 }
 
 func initSentry(dsn string, logger *logrus.Entry) {

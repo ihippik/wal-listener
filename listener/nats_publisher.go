@@ -1,12 +1,15 @@
 package listener
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
 
 	"github.com/banked/wal-listener/v2/config"
 )
@@ -27,15 +30,25 @@ type Event struct {
 }
 
 // Publish serializes the event and publishes it on the bus.
-func (n NatsPublisher) Publish(subject string, event Event) error {
+func (n NatsPublisher) Publish(ctx context.Context, cfg *config.Config, log *logrus.Entry, event Event) error {
 	msg, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal err: %w", err)
 	}
 
+	subject := SubjectName(cfg, event)
+
 	if _, err := n.js.Publish(subject, msg); err != nil {
 		return fmt.Errorf("failed to publish: %w", err)
 	}
+
+	publishedNatsEvents.With(prometheus.Labels{"subject": subject, "table": event.Table}).Inc()
+
+	log.WithFields(logrus.Fields{
+		"subject": subject,
+		"action":  event.Action,
+		"table":   event.Table,
+	}).Infoln("event was sent")
 
 	return nil
 }
@@ -46,8 +59,8 @@ func NewNatsPublisher(js nats.JetStreamContext) *NatsPublisher {
 }
 
 // SubjectName creates subject name from the prefix, schema and table name. Also using topic map from cfg.
-func (e *Event) SubjectName(cfg *config.Config) string {
-	topic := fmt.Sprintf("%s_%s", e.Schema, e.Table)
+func SubjectName(cfg *config.Config, event Event) string {
+	topic := fmt.Sprintf("%s_%s", event.Schema, event.Table)
 
 	if cfg.Listener.TopicsMap != nil {
 		if t, ok := cfg.Listener.TopicsMap[topic]; ok {

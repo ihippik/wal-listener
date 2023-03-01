@@ -10,9 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
-
 	"github.com/jackc/pgx"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
@@ -419,8 +418,8 @@ func TestListener_Stream(t *testing.T) {
 			Return(err).After(10 * time.Millisecond)
 	}
 
-	setPublish := func(subject string, want Event, err error) {
-		publ.On("Publish", subject, mock.MatchedBy(func(got Event) bool {
+	setPublish := func(want Event, err error) {
+		publ.On("Publish", mock.Anything, mock.Anything, mock.Anything, mock.MatchedBy(func(got Event) bool {
 			ok := want.Action == got.Action &&
 				reflect.DeepEqual(want.Data, got.Data) &&
 				want.ID == got.ID &&
@@ -488,7 +487,6 @@ func TestListener_Stream(t *testing.T) {
 				)
 
 				setPublish(
-					"STREAM.pre_public_users",
 					Event{
 						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
 						Schema:    "public",
@@ -759,7 +757,6 @@ func TestListener_Stream(t *testing.T) {
 				)
 
 				setPublish(
-					"STREAM.pre_public_users",
 					Event{
 						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
 						Schema:    "public",

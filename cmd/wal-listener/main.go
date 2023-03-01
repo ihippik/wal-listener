@@ -49,19 +49,44 @@ func main() {
 
 			go initMetrics(cfg.Monitoring.PromAddr, logger)
 
-			natsConn, err := initNats(cfg.Nats)
-			if err != nil {
-				return fmt.Errorf("nats connection: %w", err)
-			}
-			defer natsConn.Close()
+			var publisher listener.Publisher
 
-			js, err := natsConn.JetStream()
-			if err != nil {
-				return fmt.Errorf("jet stream: %w", err)
+			if cfg.Nats.Enabled {
+				natsConn, err := initNats(cfg.Nats)
+				if err != nil {
+					return fmt.Errorf("nats connection: %w", err)
+				}
+				defer natsConn.Close()
+
+				js, err := natsConn.JetStream()
+				if err != nil {
+					return fmt.Errorf("jet stream: %w", err)
+				}
+
+				if err := createStream(logger, js, cfg.Nats.StreamName); err != nil {
+					return fmt.Errorf("create Nats stream: %w", err)
+				}
+
+				publisher = listener.NewNatsPublisher(js)
 			}
 
-			if err := createStream(logger, js, cfg.Nats.StreamName); err != nil {
-				return fmt.Errorf("create Nats stream: %w", err)
+			if cfg.PubSub.Enabled {
+				client, err := initPubSub(cfg.PubSub)
+				if err != nil {
+					return fmt.Errorf("connect to pubsub: %w", err)
+				}
+
+				defer func() {
+					if err := client.Close(); err != nil {
+						logger.WithError(err).Errorln("error closing pubsub client")
+					}
+				}()
+
+				publisher = listener.NewPubSubPublisher(client.Topic(cfg.PubSub.Topic))
+			}
+
+			if publisher == nil {
+				return fmt.Errorf("no publisher enabled")
 			}
 
 			pgxConf, err := pgx.ParseURI(cfg.Database.DSN)
@@ -79,7 +104,7 @@ func main() {
 				logger,
 				listener.NewRepository(conn),
 				rConn,
-				listener.NewNatsPublisher(js),
+				publisher,
 				listener.NewBinaryParser(binary.BigEndian),
 				fmt.Sprintf("%s_%s", cfg.Listener.SlotName, pgxConf.Database),
 			)
