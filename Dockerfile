@@ -1,6 +1,6 @@
 FROM golang:1.20.1-bullseye as builder
 LABEL stage=builder
-MAINTAINER Konstantin Makarov <hippik80@gmail.com>
+LABEL maintainer="Konstantin Makarov <hippik80@gmail.com>"
 
 RUN adduser \
   --disabled-password \
