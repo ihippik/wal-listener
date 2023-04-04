@@ -53,7 +53,6 @@ type Listener struct {
 	log        *logrus.Entry
 	mu         sync.RWMutex
 	slotName   string
-	publisher  publisher
 	replicator replication
 	repository repository
 	parser     parser
@@ -83,14 +82,12 @@ func NewWalListener(
 	log *logrus.Entry,
 	repo repository,
 	repl replication,
-	publ publisher,
 	parser parser,
 ) *Listener {
 	return &Listener{
 		log:        log,
 		slotName:   cfg.Listener.SlotName,
 		cfg:        cfg,
-		publisher:  publ,
 		repository: repo,
 		replicator: repl,
 		parser:     parser,
@@ -250,10 +247,10 @@ func (l *Listener) Stream(ctx context.Context) {
 					for _, event := range natsEvents {
 						subjectName := event.SubjectName(l.cfg)
 
-						if err = l.publisher.Publish(subjectName, event); err != nil {
-							l.errChannel <- fmt.Errorf("publish message: %w", err)
-							continue
-						}
+						// if err = l.publisher.Publish(subjectName, event); err != nil {
+						// 	l.errChannel <- fmt.Errorf("publish message: %w", err)
+						// 	continue
+						// }
 
 						publishedEvents.With(prometheus.Labels{"subject": subjectName, "table": event.Table}).Inc()
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/goccy/go-json"
+	// "github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 
@@ -29,14 +29,14 @@ type Event struct {
 
 // Publish serializes the event and publishes it on the bus.
 func (n NatsPublisher) Publish(subject string, event Event) error {
-	msg, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("marshal err: %w", err)
-	}
+	// msg, err := json.Marshal(event)
+	// if err != nil {
+	// 	return fmt.Errorf("marshal err: %w", err)
+	// }
 
-	if _, err := n.js.Publish(subject, msg); err != nil {
-		return fmt.Errorf("failed to publish: %w", err)
-	}
+	// if _, err := n.js.Publish(subject, msg); err != nil {
+	// 	return fmt.Errorf("failed to publish: %w", err)
+	// }
 
 	return nil
 }

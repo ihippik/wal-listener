@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nats-io/nats.go"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 
@@ -45,25 +44,6 @@ func main() {
 
 			logger := initLogger(cfg.Logger, version)
 
-			initSentry(cfg.Monitoring.SentryDSN, logger)
-
-			go initMetrics(cfg.Monitoring.PromAddr, logger)
-
-			natsConn, err := nats.Connect(cfg.Nats.Address)
-			if err != nil {
-				return fmt.Errorf("nats connection: %w", err)
-			}
-			defer natsConn.Close()
-
-			js, err := natsConn.JetStream()
-			if err != nil {
-				return fmt.Errorf("jet stream: %w", err)
-			}
-
-			if err := createStream(logger, js, cfg.Nats.StreamName); err != nil {
-				return fmt.Errorf("create Nats stream: %w", err)
-			}
-
 			conn, rConn, err := initPgxConnections(cfg.Database)
 			if err != nil {
 				return fmt.Errorf("pgx connection: %w", err)
@@ -74,7 +54,6 @@ func main() {
 				logger,
 				listener.NewRepository(conn),
 				rConn,
-				listener.NewNatsPublisher(js),
 				listener.NewBinaryParser(binary.BigEndian),
 			)
 
