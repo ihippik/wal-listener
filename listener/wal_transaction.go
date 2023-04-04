@@ -1,14 +1,14 @@
 package listener
 
 import (
-	"strconv"
-	"strings"
-	"time"
-
+	"fmt"
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // ActionKind kind of action on WAL message.
@@ -208,6 +208,8 @@ func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []
 		}
 
 		filterSkippedEvents.With(prometheus.Labels{"table": item.Table}).Inc()
+		bs, _ := json.Marshal(event.Data)
+		fmt.Println(string(bs))
 
 		logrus.WithFields(
 			logrus.Fields{
