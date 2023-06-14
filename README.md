@@ -8,7 +8,7 @@
 
 ![WAL-Listener](wal-listener.png)
 
-A service that helps implement the **Event-driven architecture**.
+A service that helps implement the **Event-Driven architecture**.
 
 To maintain the consistency of data in the system, we will use **transactional messaging** -
 publishing events in a single transaction with a domain model change.
