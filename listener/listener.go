@@ -15,6 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/ihippik/wal-listener/v2/config"
+	"github.com/ihippik/wal-listener/v2/publisher"
 )
 
 const errorBufferSize = 100
@@ -22,8 +23,8 @@ const errorBufferSize = 100
 // Logical decoding plugin.
 const pgOutputPlugin = "pgoutput"
 
-type publisher interface {
-	Publish(string, Event) error
+type eventPublisher interface {
+	Publish(string, publisher.Event) error
 }
 
 type parser interface {
@@ -53,7 +54,7 @@ type Listener struct {
 	log        *logrus.Entry
 	mu         sync.RWMutex
 	slotName   string
-	publisher  publisher
+	publisher  eventPublisher
 	replicator replication
 	repository repository
 	parser     parser
@@ -83,7 +84,7 @@ func NewWalListener(
 	log *logrus.Entry,
 	repo repository,
 	repl replication,
-	publ publisher,
+	publ eventPublisher,
 	parser parser,
 ) *Listener {
 	return &Listener{
@@ -213,7 +214,6 @@ func (l *Listener) Stream(ctx context.Context) {
 		publicationNames(publicationName),
 	); err != nil {
 		l.errChannel <- newListenerError("StartReplication()", err)
-
 		return
 	}
 

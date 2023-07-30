@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	publisher2 "github.com/ihippik/wal-listener/v2/publisher"
 	"io"
 	"reflect"
 	"testing"
@@ -419,8 +420,8 @@ func TestListener_Stream(t *testing.T) {
 			Return(err).After(10 * time.Millisecond)
 	}
 
-	setPublish := func(subject string, want Event, err error) {
-		publ.On("Publish", subject, mock.MatchedBy(func(got Event) bool {
+	setPublish := func(subject string, want publisher2.Event, err error) {
+		publ.On("Publish", subject, mock.MatchedBy(func(got publisher2.Event) bool {
 			ok := want.Action == got.Action &&
 				reflect.DeepEqual(want.Data, got.Data) &&
 				want.ID == got.ID &&
@@ -489,7 +490,7 @@ func TestListener_Stream(t *testing.T) {
 
 				setPublish(
 					"STREAM.pre_public_users",
-					Event{
+					publisher2.Event{
 						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
 						Schema:    "public",
 						Table:     "users",
@@ -760,7 +761,7 @@ func TestListener_Stream(t *testing.T) {
 
 				setPublish(
 					"STREAM.pre_public_users",
-					Event{
+					publisher2.Event{
 						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
 						Schema:    "public",
 						Table:     "users",

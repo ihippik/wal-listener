@@ -1,6 +1,7 @@
 package listener
 
 import (
+	publisher2 "github.com/ihippik/wal-listener/v2/publisher"
 	"strconv"
 	"strings"
 	"time"
@@ -175,8 +176,8 @@ func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData,
 
 // CreateEventsWithFilter filter WAL message by table,
 // action and create events for each value.
-func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []Event {
-	var events []Event
+func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []publisher2.Event {
+	var events []publisher2.Event
 
 	for _, item := range w.Actions {
 		dataOld := make(map[string]any)
@@ -189,7 +190,7 @@ func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []
 			data[val.name] = val.value
 		}
 
-		event := Event{
+		event := publisher2.Event{
 			ID:        uuid.New(),
 			Schema:    item.Schema,
 			Table:     item.Table,

@@ -10,6 +10,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"github.com/ihippik/wal-listener/v2/listener"
+	"github.com/ihippik/wal-listener/v2/publisher"
 )
 
 func main() {
@@ -74,7 +75,7 @@ func main() {
 				logger,
 				listener.NewRepository(conn),
 				rConn,
-				listener.NewNatsPublisher(js),
+				publisher.NewNatsPublisher(js),
 				listener.NewBinaryParser(binary.BigEndian),
 			)
 
