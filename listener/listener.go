@@ -109,7 +109,7 @@ func (l *Listener) Process(ctx context.Context) error {
 	logger.Infoln("service was started")
 
 	if err := l.repository.CreatePublication(publicationName); err != nil {
-		logger.WithError(err).Warnln("skip create publication")
+		logger.WithError(err).Warnln("publication creation was skipped")
 	}
 
 	slotIsExists, err := l.slotIsExists()

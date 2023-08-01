@@ -25,7 +25,9 @@ Then we filter out only the events we need and publish them in the queue
 
 ### Event publishing
 
-NATS JetStream is used as a message broker.
+As the message broker will be used is of your choice:
+NATS JetStream [`type=nats`] or Apache Kafka [`type=kafka`].
+
 Service publishes the following structure.
 The name of the topic for subscription to receive messages is formed from the prefix of the topic,
 the name of the database and the name of the table `prefix + schema_table`.
@@ -42,7 +44,7 @@ the name of the database and the name of the table `prefix + schema_table`.
 }
 ```
 
-Messages are published to NATS (JetStream) at least once!
+Messages are published to the broker at least once!
 
 ### Filter configuration example
 
@@ -108,10 +110,11 @@ database:
   user: postgres
   password: postgres
   debug: false
-nats:
-  address: localhost:4222
-  streamName: "wal_listener"
-  topicPrefix: ""
+publisher:
+   type: nats
+   address: localhost:4222
+   topic: "wal_listener"
+   topicPrefix: ""
 monitoring:
   sentryDSN: "dsn string"
   promAddr: ":2112"

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/ihippik/wal-listener/v2/config"
+	"github.com/ihippik/wal-listener/v2/publisher"
 )
 
 // logger log levels.
@@ -69,8 +70,8 @@ func initMetrics(addr string, logger *logrus.Entry) {
 	}
 }
 
-// initLogger init logrus preferences.
-func initLogger(cfg config.LoggerCfg, version string) *logrus.Entry {
+// initLogger init Logrus preferences.
+func initLogger(cfg *config.LoggerCfg, version string) *logrus.Entry {
 	logger := logrus.New()
 
 	logger.SetReportCaller(cfg.Caller)
@@ -143,7 +144,7 @@ func initSentry(dsn string, logger *logrus.Entry) {
 }
 
 // initPgxConnections initialise db and replication connections.
-func initPgxConnections(cfg config.DatabaseCfg) (*pgx.Conn, *pgx.ReplicationConn, error) {
+func initPgxConnections(cfg *config.DatabaseCfg) (*pgx.Conn, *pgx.ReplicationConn, error) {
 	pgxConf := pgx.ConnConfig{
 		// TODO logger
 		LogLevel: pgx.LogLevelInfo,
@@ -170,6 +171,42 @@ func initPgxConnections(cfg config.DatabaseCfg) (*pgx.Conn, *pgx.ReplicationConn
 
 type pgxLogger struct{}
 
-func (l pgxLogger) Log(level pgx.LogLevel, msg string, data map[string]any) {
+func (l pgxLogger) Log(_ pgx.LogLevel, msg string, _ map[string]any) {
 	logrus.Debugln(msg)
+}
+
+type eventPublisher interface {
+	Publish(string, publisher.Event) error
+}
+
+// factoryPublisher represents a factory function for creating a eventPublisher.
+func factoryPublisher(cfg *config.PublisherCfg, logger *logrus.Entry) (eventPublisher, error) {
+	switch cfg.Type {
+	case config.PublisherTypeKafka:
+		producer, err := publisher.NewProducer(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("kafka producer: %w", err)
+		}
+
+		return publisher.NewKafkaPublisher(producer), nil
+	case config.PublisherTypeNats:
+		natsConn, err := nats.Connect(cfg.Address)
+		if err != nil {
+			return nil, fmt.Errorf("nats connection: %w", err)
+		}
+		defer natsConn.Close()
+
+		js, err := natsConn.JetStream()
+		if err != nil {
+			return nil, fmt.Errorf("jet stream: %w", err)
+		}
+
+		if err := createStream(logger, js, cfg.Topic); err != nil {
+			return nil, fmt.Errorf("create Nats stream: %w", err)
+		}
+
+		return publisher.NewNatsPublisher(js), nil
+	default:
+		return nil, fmt.Errorf("unknown publisher type: %s", cfg.Type)
+	}
 }

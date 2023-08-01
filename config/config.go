@@ -6,13 +6,20 @@ import (
 	"github.com/asaskevich/govalidator"
 )
 
+type PublisherType string
+
+const (
+	PublisherTypeNats  PublisherType = "nats"
+	PublisherTypeKafka PublisherType = "kafka"
+)
+
 // Config for wal-listener/
 type Config struct {
-	Listener   ListenerCfg
-	Database   DatabaseCfg
-	Nats       NatsCfg
-	Logger     LoggerCfg
-	Monitoring MonitoringCfg
+	Listener   *ListenerCfg  `valid:"required"`
+	Database   *DatabaseCfg  `valid:"required"`
+	Publisher  *PublisherCfg `valid:"required"`
+	Logger     *LoggerCfg    `valid:"required"`
+	Monitoring *MonitoringCfg
 }
 
 // ListenerCfg path of the listener config.
@@ -25,11 +32,16 @@ type ListenerCfg struct {
 	TopicsMap         map[string]string
 }
 
-// NatsCfg path of the NATS config.
-type NatsCfg struct {
-	Address     string `valid:"required"`
-	StreamName  string `valid:"required"`
+// PublisherCfg represent configuration for any types pulisher.
+type PublisherCfg struct {
+	Type        PublisherType `valid:"required"`
+	Address     string        `valid:"required"`
+	Topic       string        `valid:"required"`
 	TopicPrefix string
+	EnableTLS   bool   `json:"enable_tls"`
+	ClientCert  string `json:"client_cert"`
+	ClientKey   string `json:"client_key"`
+	CACert      string `json:"ca_cert"`
 }
 
 // MonitoringCfg monitoring configuration.

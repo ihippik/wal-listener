@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nats-io/nats.go"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 
 	"github.com/ihippik/wal-listener/v2/listener"
-	"github.com/ihippik/wal-listener/v2/publisher"
 )
 
 func main() {
@@ -23,8 +21,8 @@ func main() {
 	version := getVersion()
 
 	app := &cli.App{
-		Name:    "Wal-Listener",
-		Usage:   "listen postgres events",
+		Name:    "WAL-Listener",
+		Usage:   "listen PostgreSQL events",
 		Version: version,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -50,24 +48,14 @@ func main() {
 
 			go initMetrics(cfg.Monitoring.PromAddr, logger)
 
-			natsConn, err := nats.Connect(cfg.Nats.Address)
-			if err != nil {
-				return fmt.Errorf("nats connection: %w", err)
-			}
-			defer natsConn.Close()
-
-			js, err := natsConn.JetStream()
-			if err != nil {
-				return fmt.Errorf("jet stream: %w", err)
-			}
-
-			if err := createStream(logger, js, cfg.Nats.StreamName); err != nil {
-				return fmt.Errorf("create Nats stream: %w", err)
-			}
-
 			conn, rConn, err := initPgxConnections(cfg.Database)
 			if err != nil {
 				return fmt.Errorf("pgx connection: %w", err)
+			}
+
+			pub, err := factoryPublisher(cfg.Publisher, logger)
+			if err != nil {
+				return fmt.Errorf("factory publisher: %w", err)
 			}
 
 			service := listener.NewWalListener(
@@ -75,7 +63,7 @@ func main() {
 				logger,
 				listener.NewRepository(conn),
 				rConn,
-				publisher.NewNatsPublisher(js),
+				pub,
 				listener.NewBinaryParser(binary.BigEndian),
 			)
 
@@ -88,6 +76,6 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		logrus.Fatal(err)
+		logrus.Errorln(err)
 	}
 }

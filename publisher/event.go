@@ -29,7 +29,7 @@ func (e *Event) SubjectName(cfg *config.Config) string {
 		}
 	}
 
-	topic = cfg.Nats.StreamName + "." + cfg.Nats.TopicPrefix + topic
+	topic = cfg.Publisher.Topic + "." + cfg.Publisher.TopicPrefix + topic
 
 	return topic
 }

@@ -9,9 +9,10 @@ import (
 
 func TestConfig_Validate(t *testing.T) {
 	type fields struct {
-		Listener ListenerCfg
-		Database DatabaseCfg
-		Nats     NatsCfg
+		Logger    *LoggerCfg
+		Listener  *ListenerCfg
+		Database  *DatabaseCfg
+		Publisher *PublisherCfg
 	}
 	tests := []struct {
 		name    string
@@ -21,22 +22,26 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "success",
 			fields: fields{
-				Listener: ListenerCfg{
+				Logger: &LoggerCfg{
+					Level: "info",
+				},
+				Listener: &ListenerCfg{
 					SlotName:          "slot",
 					AckTimeout:        10,
 					RefreshConnection: 10,
 					HeartbeatInterval: 10,
 				},
-				Database: DatabaseCfg{
+				Database: &DatabaseCfg{
 					Host:     "host",
 					Port:     10,
 					Name:     "db",
 					User:     "usr",
 					Password: "pass",
 				},
-				Nats: NatsCfg{
+				Publisher: &PublisherCfg{
+					Type:        "kafka",
 					Address:     "addr",
-					StreamName:  "stream",
+					Topic:       "stream",
 					TopicPrefix: "prefix",
 				},
 			},
@@ -45,20 +50,24 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "bad listener cfg",
 			fields: fields{
-				Listener: ListenerCfg{
+				Logger: &LoggerCfg{
+					Level: "info",
+				},
+				Listener: &ListenerCfg{
 					SlotName:          "",
 					HeartbeatInterval: 10,
 				},
-				Database: DatabaseCfg{
+				Database: &DatabaseCfg{
 					Host:     "host",
 					Port:     10,
 					Name:     "db",
 					User:     "usr",
 					Password: "pass",
 				},
-				Nats: NatsCfg{
+				Publisher: &PublisherCfg{
+					Type:        "kafka",
 					Address:     "addr",
-					StreamName:  "stream",
+					Topic:       "stream",
 					TopicPrefix: "prefix",
 				},
 			},
@@ -67,78 +76,64 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "bad db cfg",
 			fields: fields{
-				Listener: ListenerCfg{
+				Logger: &LoggerCfg{
+					Level: "info",
+				},
+				Listener: &ListenerCfg{
 					SlotName:          "slot",
 					AckTimeout:        10,
 					RefreshConnection: 10,
 					HeartbeatInterval: 10,
 				},
-				Database: DatabaseCfg{
+				Database: &DatabaseCfg{
 					Name:     "db",
 					User:     "usr",
 					Password: "pass",
 				},
-				Nats: NatsCfg{
+				Publisher: &PublisherCfg{
+					Type:        "kafka",
 					Address:     "addr",
-					StreamName:  "stream",
+					Topic:       "stream",
 					TopicPrefix: "prefix",
 				},
 			},
 			wantErr: errors.New("Database.Host: non zero value required;Database.Port: non zero value required"),
 		},
 		{
-			name: "empty nats addr cfg",
+			name: "empty publisher kind",
 			fields: fields{
-				Listener: ListenerCfg{
+				Logger: &LoggerCfg{
+					Level: "info",
+				},
+				Listener: &ListenerCfg{
 					SlotName:          "slot",
 					AckTimeout:        10,
 					RefreshConnection: 10,
 					HeartbeatInterval: 10,
 				},
-				Database: DatabaseCfg{
+				Database: &DatabaseCfg{
 					Host:     "host",
 					Port:     10,
 					Name:     "db",
 					User:     "usr",
 					Password: "pass",
 				},
-				Nats: NatsCfg{
-					StreamName:  "stream",
+				Publisher: &PublisherCfg{
+					Topic:       "stream",
 					TopicPrefix: "prefix",
 				},
 			},
-			wantErr: errors.New("Nats.Address: non zero value required"),
-		},
-		{
-			name: "empty nats stream cfg",
-			fields: fields{
-				Listener: ListenerCfg{
-					SlotName:          "slot",
-					AckTimeout:        10,
-					RefreshConnection: 10,
-					HeartbeatInterval: 10,
-				},
-				Database: DatabaseCfg{
-					Host:     "host",
-					Port:     10,
-					Name:     "db",
-					User:     "usr",
-					Password: "pass",
-				},
-				Nats: NatsCfg{
-					Address:     "addr",
-					TopicPrefix: "prefix",
-				},
-			},
-			wantErr: errors.New("Nats.StreamName: non zero value required"),
+			wantErr: errors.New("Publisher.Address: non zero value required;Publisher.Type: non zero value required"),
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := Config{
-				Listener: tt.fields.Listener,
-				Database: tt.fields.Database,
-				Nats:     tt.fields.Nats,
+				Logger:    tt.fields.Logger,
+				Listener:  tt.fields.Listener,
+				Database:  tt.fields.Database,
+				Publisher: tt.fields.Publisher,
 			}
 			err := c.Validate()
 			if err != nil && assert.Error(t, tt.wantErr, err.Error()) {
