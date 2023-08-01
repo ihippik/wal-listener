@@ -1,4 +1,4 @@
-package listener
+package publisher
 
 import (
 	"testing"
@@ -32,10 +32,10 @@ func TestEvent_GetSubjectName(t *testing.T) {
 			},
 			args: args{
 				cfg: &config.Config{
-					Listener: config.ListenerCfg{
+					Listener: &config.ListenerCfg{
 						TopicsMap: nil,
 					},
-					Nats: config.NatsCfg{TopicPrefix: "prefix_", StreamName: "STREAM"},
+					Publisher: &config.PublisherCfg{TopicPrefix: "prefix_", Topic: "STREAM"},
 				},
 			},
 			want: "STREAM.prefix_public_users",

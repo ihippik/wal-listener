@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
-
 	"github.com/jackc/pgx"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/ihippik/wal-listener/v2/config"
+	"github.com/ihippik/wal-listener/v2/publisher"
 )
 
 var (
@@ -419,8 +419,8 @@ func TestListener_Stream(t *testing.T) {
 			Return(err).After(10 * time.Millisecond)
 	}
 
-	setPublish := func(subject string, want Event, err error) {
-		publ.On("Publish", subject, mock.MatchedBy(func(got Event) bool {
+	setPublish := func(subject string, want publisher.Event, err error) {
+		publ.On("Publish", subject, mock.MatchedBy(func(got publisher.Event) bool {
 			ok := want.Action == got.Action &&
 				reflect.DeepEqual(want.Data, got.Data) &&
 				want.ID == got.ID &&
@@ -489,7 +489,7 @@ func TestListener_Stream(t *testing.T) {
 
 				setPublish(
 					"STREAM.pre_public_users",
-					Event{
+					publisher.Event{
 						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
 						Schema:    "public",
 						Table:     "users",
@@ -519,7 +519,7 @@ func TestListener_Stream(t *testing.T) {
 			},
 			fields: fields{
 				config: &config.Config{
-					Listener: config.ListenerCfg{
+					Listener: &config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
 						HeartbeatInterval: 1,
@@ -527,8 +527,8 @@ func TestListener_Stream(t *testing.T) {
 							Tables: map[string][]string{"users": {"insert"}},
 						},
 					},
-					Nats: config.NatsCfg{
-						StreamName:  "STREAM",
+					Publisher: &config.PublisherCfg{
+						Topic:       "STREAM",
 						TopicPrefix: "pre_",
 					},
 				},
@@ -553,16 +553,16 @@ func TestListener_Stream(t *testing.T) {
 			},
 			fields: fields{
 				config: &config.Config{
-					Listener: config.ListenerCfg{
+					Listener: &config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
 						HeartbeatInterval: 1, Filter: config.FilterStruct{
 							Tables: map[string][]string{"users": {"insert"}},
 						},
 					},
-					Nats: config.NatsCfg{
+					Publisher: &config.PublisherCfg{
+						Topic:       "stream",
 						TopicPrefix: "pre_",
-						StreamName:  "stream",
 					},
 				},
 				slotName:   "myslot",
@@ -612,14 +612,14 @@ func TestListener_Stream(t *testing.T) {
 			},
 			fields: fields{
 				config: &config.Config{
-					Listener: config.ListenerCfg{
+					Listener: &config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
 						HeartbeatInterval: 1, Filter: config.FilterStruct{
 							Tables: map[string][]string{"users": {"insert"}},
 						},
 					},
-					Nats: config.NatsCfg{
+					Publisher: &config.PublisherCfg{
 						TopicPrefix: "pre_",
 					},
 				},
@@ -681,14 +681,14 @@ func TestListener_Stream(t *testing.T) {
 			},
 			fields: fields{
 				config: &config.Config{
-					Listener: config.ListenerCfg{
+					Listener: &config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
 						HeartbeatInterval: 1, Filter: config.FilterStruct{
 							Tables: map[string][]string{"users": {"insert"}},
 						},
 					},
-					Nats: config.NatsCfg{
+					Publisher: &config.PublisherCfg{
 						TopicPrefix: "pre_",
 					},
 				},
@@ -760,7 +760,7 @@ func TestListener_Stream(t *testing.T) {
 
 				setPublish(
 					"STREAM.pre_public_users",
-					Event{
+					publisher.Event{
 						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
 						Schema:    "public",
 						Table:     "users",
@@ -783,15 +783,15 @@ func TestListener_Stream(t *testing.T) {
 			},
 			fields: fields{
 				config: &config.Config{
-					Listener: config.ListenerCfg{
+					Listener: &config.ListenerCfg{
 						SlotName:          "myslot",
 						AckTimeout:        0,
 						HeartbeatInterval: 1, Filter: config.FilterStruct{
 							Tables: map[string][]string{"users": {"insert"}},
 						},
 					},
-					Nats: config.NatsCfg{
-						StreamName:  "STREAM",
+					Publisher: &config.PublisherCfg{
+						Topic:       "STREAM",
 						TopicPrefix: "pre_",
 					},
 				},

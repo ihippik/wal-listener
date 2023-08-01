@@ -20,9 +20,14 @@ database:
   user: postgres
   password: postgres
   debug: false
-nats:
+publisher:
+  type: kafka
   address: localhost:4222
-  streamName: "wal_listener"
+  enable_tls: true # Kafka only
+  client_cert: "cert.pem" # Kafka only
+  client_key: "key.pub" # Kafka only
+  ca_cert: "ca.pem" # Kafka only
+  topic: "wal_listener"
   topicPrefix: ""
 monitoring:
   sentryDSN: ""
