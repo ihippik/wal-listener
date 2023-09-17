@@ -25,10 +25,11 @@ var (
 )
 
 func TestListener_slotIsExists(t *testing.T) {
-	repo := new(repositoryMock)
 	type fields struct {
 		slotName string
 	}
+
+	repo := new(repositoryMock)
 
 	setGetSlotLSN := func(slotName, lsn string, err error) {
 		repo.On("GetSlotLSN", slotName).
@@ -204,6 +205,8 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 			Once()
 	}
 
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
 	tests := []struct {
 		name    string
 		setup   func()
@@ -249,17 +252,21 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 			wantErr: true,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
+
 			w := &Listener{
-				log:        slog.New(slog.NewJSONHandler(io.Discard, nil)),
+				log:        logger,
 				replicator: repl,
 				lsn:        tt.fields.restartLSN,
 			}
+
 			if err := w.SendStandbyStatus(); (err != nil) != tt.wantErr {
 				t.Errorf("SendStandbyStatus() error = %v, wantErr %v", err, tt.wantErr)
 			}
+
 			repl.AssertExpectations(t)
 		})
 	}
@@ -355,11 +362,13 @@ func TestListener_AckWalMessage(t *testing.T) {
 		},
 	}
 
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
 			w := &Listener{
-				log:        slog.New(slog.NewJSONHandler(io.Discard, nil)),
+				log:        logger,
 				replicator: repl,
 				lsn:        tt.fields.restartLSN,
 			}
@@ -442,6 +451,9 @@ func TestListener_Stream(t *testing.T) {
 
 	uuid.SetRand(bytes.NewReader(make([]byte, 512)))
 
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	metrics := new(monitorMock)
+
 	tests := []struct {
 		name   string
 		setup  func()
@@ -482,6 +494,8 @@ func TestListener_Stream(t *testing.T) {
 				setParseWalMessageOnce(
 					[]byte(`some bytes`),
 					&WalTransaction{
+						monitor:       metrics,
+						log:           logger,
 						LSN:           0,
 						BeginTime:     nil,
 						CommitTime:    nil,
@@ -674,6 +688,8 @@ func TestListener_Stream(t *testing.T) {
 				setParseWalMessageOnce(
 					[]byte(`some bytes`),
 					&WalTransaction{
+						monitor:       metrics,
+						log:           logger,
 						LSN:           0,
 						BeginTime:     nil,
 						CommitTime:    nil,
@@ -753,6 +769,8 @@ func TestListener_Stream(t *testing.T) {
 				setParseWalMessageOnce(
 					[]byte(`some bytes`),
 					&WalTransaction{
+						monitor:       metrics,
+						log:           logger,
 						LSN:           0,
 						BeginTime:     nil,
 						CommitTime:    nil,
@@ -808,8 +826,6 @@ func TestListener_Stream(t *testing.T) {
 		},
 	}
 
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
@@ -817,6 +833,7 @@ func TestListener_Stream(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tt.args.timeout)
 			w := &Listener{
 				log:        logger,
+				monitor:    metrics,
 				cfg:        tt.fields.config,
 				slotName:   tt.fields.slotName,
 				publisher:  publ,

@@ -1,15 +1,14 @@
 package listener
 
 import (
-	publisher2 "github.com/ihippik/wal-listener/v2/publisher"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/sirupsen/logrus"
+	"github.com/ihippik/wal-listener/v2/publisher"
 )
 
 // ActionKind kind of action on WAL message.
@@ -22,8 +21,14 @@ const (
 	ActionKindDelete ActionKind = "DELETE"
 )
 
+type transactionMonitor interface {
+	IncFilterSkippedEvents(table string)
+}
+
 // WalTransaction transaction specified WAL message.
 type WalTransaction struct {
+	log           *slog.Logger
+	monitor       transactionMonitor
 	LSN           int64
 	BeginTime     *time.Time
 	CommitTime    *time.Time
@@ -32,8 +37,10 @@ type WalTransaction struct {
 }
 
 // NewWalTransaction create and initialize new WAL transaction.
-func NewWalTransaction() *WalTransaction {
+func NewWalTransaction(log *slog.Logger, monitor transactionMonitor) *WalTransaction {
 	return &WalTransaction{
+		log:           log,
+		monitor:       monitor,
 		RelationStore: make(map[int32]RelationData),
 	}
 }
@@ -60,6 +67,7 @@ type ActionData struct {
 
 // Column of the table with which changes occur.
 type Column struct {
+	log       *slog.Logger
 	name      string
 	value     any
 	valueType int
@@ -113,13 +121,22 @@ func (c *Column) AssertValue(src []byte) {
 		err = json.Unmarshal(src, &m)
 		val = m
 	default:
-		logrus.WithFields(logrus.Fields{"pgtype": c.valueType, "column_name": c.name}).Warnln("unknown oid type")
+		c.log.Warn(
+			"unknown oid type",
+			slog.Int("pg_type", c.valueType),
+			slog.String("column_name", c.name),
+		)
+
 		val = strSrc
 	}
 
 	if err != nil {
-		logrus.WithError(err).WithFields(logrus.Fields{"pgtype": c.valueType, "column_name": c.name}).
-			Errorln("column data parse error")
+		c.log.Error(
+			"column data parse error",
+			slog.String("err", err.Error()),
+			slog.Int("pg_type", c.valueType),
+			slog.String("column_name", c.name),
+		)
 	}
 
 	c.value = val
@@ -149,10 +166,12 @@ func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData,
 
 	for num, row := range oldRows {
 		column := Column{
+			log:       w.log,
 			name:      rel.Columns[num].name,
 			valueType: rel.Columns[num].valueType,
 			isKey:     rel.Columns[num].isKey,
 		}
+
 		column.AssertValue(row.Value)
 		oldColumns = append(oldColumns, column)
 	}
@@ -160,8 +179,10 @@ func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData,
 	a.OldColumns = oldColumns
 
 	var newColumns []Column
+
 	for num, row := range newRows {
 		column := Column{
+			log:       w.log,
 			name:      rel.Columns[num].name,
 			valueType: rel.Columns[num].valueType,
 			isKey:     rel.Columns[num].isKey,
@@ -169,6 +190,7 @@ func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData,
 		column.AssertValue(row.Value)
 		newColumns = append(newColumns, column)
 	}
+
 	a.NewColumns = newColumns
 
 	return a, nil
@@ -176,21 +198,23 @@ func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData,
 
 // CreateEventsWithFilter filter WAL message by table,
 // action and create events for each value.
-func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []publisher2.Event {
-	var events []publisher2.Event
+func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []publisher.Event {
+	var events []publisher.Event
 
 	for _, item := range w.Actions {
-		dataOld := make(map[string]any)
+		dataOld := make(map[string]any, len(item.OldColumns))
+
 		for _, val := range item.OldColumns {
 			dataOld[val.name] = val.value
 		}
 
-		data := make(map[string]any)
+		data := make(map[string]any, len(item.NewColumns))
+
 		for _, val := range item.NewColumns {
 			data[val.name] = val.value
 		}
 
-		event := publisher2.Event{
+		event := publisher.Event{
 			ID:        uuid.New(),
 			Schema:    item.Schema,
 			Table:     item.Table,
@@ -208,15 +232,14 @@ func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []
 			continue
 		}
 
-		filterSkippedEvents.With(prometheus.Labels{"table": item.Table}).Inc()
+		w.monitor.IncFilterSkippedEvents(item.Table)
 
-		logrus.WithFields(
-			logrus.Fields{
-				"schema": item.Schema,
-				"table":  item.Table,
-				"action": item.Kind,
-			}).
-			Infoln("wal-message was skipped by filter")
+		w.log.Info(
+			"wal-message was skipped by filter",
+			slog.String("schema", item.Schema),
+			slog.String("table", item.Table),
+			slog.String("action", string(item.Kind)),
+		)
 	}
 
 	return events

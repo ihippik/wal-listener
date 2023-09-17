@@ -69,6 +69,7 @@ func main() {
 				rConn,
 				pub,
 				listener.NewBinaryParser(logger, binary.BigEndian),
+				config.NewMetrics(),
 			)
 
 			if err := service.Process(c.Context); err != nil {

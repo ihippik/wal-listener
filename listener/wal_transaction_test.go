@@ -1,6 +1,8 @@
 package listener
 
 import (
+	"io"
+	"log/slog"
 	"reflect"
 	"testing"
 	"time"
@@ -24,7 +26,10 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 		newRows    []TupleData
 		kind       ActionKind
 	}
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	now := time.Now()
+
 	tests := []struct {
 		name    string
 		fields  fields
@@ -44,6 +49,7 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 						Table:  "users",
 						Columns: []Column{
 							{
+								log:       logger,
 								name:      "id",
 								value:     5,
 								valueType: Int4OID,
@@ -74,6 +80,7 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 				Kind:   ActionKindUpdate,
 				OldColumns: []Column{
 					{
+						log:       logger,
 						name:      "id",
 						value:     80,
 						valueType: Int4OID,
@@ -82,6 +89,7 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 				},
 				NewColumns: []Column{
 					{
+						log:       logger,
 						name:      "id",
 						value:     11,
 						valueType: Int4OID,
@@ -103,6 +111,7 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 						Table:  "users",
 						Columns: []Column{
 							{
+								log:       logger,
 								name:      "id",
 								value:     5,
 								valueType: Int4OID,
@@ -123,20 +132,24 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 			wantErr: true,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := WalTransaction{
+				log:           logger,
 				LSN:           tt.fields.LSN,
 				BeginTime:     tt.fields.BeginTime,
 				CommitTime:    tt.fields.CommitTime,
 				RelationStore: tt.fields.RelationStore,
 				Actions:       tt.fields.Actions,
 			}
+
 			gotA, err := w.CreateActionData(tt.args.relationID, tt.args.oldRows, tt.args.newRows, tt.args.kind)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("CreateActionData() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+
 			if !reflect.DeepEqual(gotA, tt.wantA) {
 				t.Errorf("CreateActionData() gotA = %v, want %v", gotA, tt.wantA)
 			}
@@ -153,6 +166,9 @@ func TestColumn_AssertValue(t *testing.T) {
 	type args struct {
 		src []byte
 	}
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
 	tests := []struct {
 		name   string
 		fields fields
@@ -170,6 +186,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte{116},
 			},
 			want: &Column{
+				log:       logger,
 				name:      "isBool",
 				value:     true,
 				valueType: 16,
@@ -187,6 +204,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte("555"),
 			},
 			want: &Column{
+				log:       logger,
 				name:      "name",
 				value:     555,
 				valueType: 21,
@@ -204,6 +222,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte("555"),
 			},
 			want: &Column{
+				log:       logger,
 				name:      "name",
 				value:     int64(555),
 				valueType: 20,
@@ -221,6 +240,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte{104, 101, 108, 108, 111},
 			},
 			want: &Column{
+				log:       logger,
 				name:      "name",
 				value:     "hello",
 				valueType: 25,
@@ -238,6 +258,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte("2022-08-27 17:44:01"),
 			},
 			want: &Column{
+				log:       logger,
 				name:      "created",
 				value:     time.Date(2022, 8, 27, 17, 44, 1, 0, time.UTC),
 				valueType: 1114,
@@ -255,6 +276,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte("2022-08-27 17:44:58.083316+00"),
 			},
 			want: &Column{
+				log:       logger,
 				name:      "created",
 				value:     time.Date(2022, 8, 27, 17, 44, 58, 83316000, time.UTC),
 				valueType: 1184,
@@ -272,6 +294,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte("600f37ed-1d88-4262-8be4-c3360e833f50"),
 			},
 			want: &Column{
+				log:       logger,
 				name:      "uuid",
 				value:     uuid.MustParse("600f37ed-1d88-4262-8be4-c3360e833f50"),
 				valueType: 2950,
@@ -289,6 +312,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte(`{"name":"jsonb"}`),
 			},
 			want: &Column{
+				log:       logger,
 				name:      "jsonb",
 				value:     map[string]any{"name": "jsonb"},
 				valueType: 3802,
@@ -306,6 +330,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte(`["tag1", "tag2"]`),
 			},
 			want: &Column{
+				log:       logger,
 				name:      "jsonb",
 				value:     []any{"tag1", "tag2"},
 				valueType: 3802,
@@ -323,6 +348,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: nil,
 			},
 			want: &Column{
+				log:       logger,
 				name:      "jsonb",
 				value:     nil,
 				valueType: 3802,
@@ -340,6 +366,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte(`[]`),
 			},
 			want: &Column{
+				log:       logger,
 				name:      "jsonb",
 				value:     []any{},
 				valueType: 3802,
@@ -357,6 +384,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte(`1980-03-19`),
 			},
 			want: &Column{
+				log:       logger,
 				name:      "date",
 				value:     "1980-03-19",
 				valueType: 1082,
@@ -374,6 +402,7 @@ func TestColumn_AssertValue(t *testing.T) {
 				src: []byte{50, 48, 50, 48, 45, 49, 48, 45, 49, 50},
 			},
 			want: &Column{
+				log:       logger,
 				name:      "created",
 				value:     "2020-10-12",
 				valueType: 1,
@@ -381,9 +410,11 @@ func TestColumn_AssertValue(t *testing.T) {
 			},
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &Column{
+				log:       logger,
 				name:      tt.fields.name,
 				valueType: tt.fields.valueType,
 				isKey:     tt.fields.isKey,

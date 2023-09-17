@@ -10,11 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx"
+
 	"github.com/ihippik/wal-listener/v2/config"
 	"github.com/ihippik/wal-listener/v2/publisher"
-	"github.com/jackc/pgx"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 const errorBufferSize = 100
@@ -47,10 +46,16 @@ type repository interface {
 	Close() error
 }
 
+type monitor interface {
+	IncPublishedEvents(subject, table string)
+	IncFilterSkippedEvents(table string)
+}
+
 // Listener main service struct.
 type Listener struct {
 	cfg        *config.Config
 	log        *slog.Logger
+	monitor    monitor
 	mu         sync.RWMutex
 	slotName   string
 	publisher  eventPublisher
@@ -61,22 +66,6 @@ type Listener struct {
 	errChannel chan error
 }
 
-var (
-	publishedEvents = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "published_events",
-		Help: "The total number of published events",
-	},
-		[]string{"subject", "table"},
-	)
-
-	filterSkippedEvents = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "filter_skipped_events",
-		Help: "The total number of skipped events",
-	},
-		[]string{"table"},
-	)
-)
-
 // NewWalListener create and initialize new service instance.
 func NewWalListener(
 	cfg *config.Config,
@@ -85,9 +74,11 @@ func NewWalListener(
 	repl replication,
 	publ eventPublisher,
 	parser parser,
+	monitor monitor,
 ) *Listener {
 	return &Listener{
 		log:        log,
+		monitor:    monitor,
 		slotName:   cfg.Listener.SlotName,
 		cfg:        cfg,
 		publisher:  publ,
@@ -157,12 +148,12 @@ ProcessLoop:
 				return err
 			}
 
-			l.log.Error("received error", "err", err)
+			logger.Error("listener: received error", "err", err)
 		case <-ctx.Done():
-			logger.Debug("context was canceled")
+			logger.Debug("listener: context was canceled")
 
 			if err := l.Stop(); err != nil {
-				logger.Error("listener stop error", "err", err)
+				logger.Error("listener: stop error", "err", err)
 			}
 
 			break ProcessLoop
@@ -176,7 +167,7 @@ ProcessLoop:
 func (l *Listener) slotIsExists() (bool, error) {
 	restartLSNStr, err := l.repository.GetSlotLSN(l.slotName)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("get slot lsn: %w", err)
 	}
 
 	if len(restartLSNStr) == 0 {
@@ -215,11 +206,11 @@ func (l *Listener) Stream(ctx context.Context) {
 
 	go l.SendPeriodicHeartbeats(ctx)
 
-	tx := NewWalTransaction()
+	tx := NewWalTransaction(l.log, l.monitor)
 
 	for {
 		if err := ctx.Err(); err != nil {
-			l.errChannel <- newListenerError("context canceled", err)
+			l.errChannel <- newListenerError("stream: context canceled", err)
 			break
 		}
 
@@ -234,8 +225,8 @@ func (l *Listener) Stream(ctx context.Context) {
 				l.log.Debug("receive wal message", slog.Uint64("wal", msg.WalMessage.WalStart))
 
 				if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
-					l.log.Error("msg parse failed", "err", err)
-					l.errChannel <- fmt.Errorf("unmarshal wal message: %w", err)
+					l.log.Error("message parse failed", "err", err)
+					l.errChannel <- fmt.Errorf("parse wal message: %w", err)
 
 					continue
 				}
@@ -251,7 +242,7 @@ func (l *Listener) Stream(ctx context.Context) {
 							continue
 						}
 
-						publishedEvents.With(prometheus.Labels{"subject": subjectName, "table": event.Table}).Inc()
+						l.monitor.IncPublishedEvents(subjectName, event.Table)
 
 						l.log.Info(
 							"event was sent",
@@ -321,7 +312,7 @@ func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			l.log.Info("periodic heartbeats: context was canceled")
+			l.log.Warn("periodic heartbeats: context was canceled")
 			return
 		case <-heart.C:
 			if err := l.SendStandbyStatus(); err != nil {

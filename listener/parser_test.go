@@ -67,7 +67,7 @@ func TestBinaryParser_readTupleData(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
-				logger:    logger,
+				log:       logger,
 				byteOrder: binary.BigEndian,
 				buffer:    tt.fields.buffer,
 			}
@@ -120,7 +120,7 @@ func TestBinaryParser_readColumns(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
-				logger:    logger,
+				log:       logger,
 				byteOrder: binary.BigEndian,
 				buffer:    tt.fields.buffer,
 			}
@@ -173,7 +173,7 @@ func TestBinaryParser_getRelationMsg(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
-				logger:    logger,
+				log:       logger,
 				byteOrder: binary.BigEndian,
 				buffer:    bytes.NewBuffer(tt.fields.src),
 			}
@@ -296,7 +296,7 @@ func TestBinaryParser_getDeleteMsg(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
-				logger:    logger,
+				log:       logger,
 				byteOrder: binary.BigEndian,
 				buffer:    bytes.NewBuffer(tt.fields.src),
 			}
@@ -352,7 +352,7 @@ func TestBinaryParser_getInsertMsg(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
-				logger:    logger,
+				log:       logger,
 				byteOrder: binary.BigEndian,
 				buffer:    bytes.NewBuffer(tt.fields.src),
 			}
@@ -367,6 +367,7 @@ func TestBinaryParser_getCommitMsg(t *testing.T) {
 	type fields struct {
 		src []byte
 	}
+
 	tests := []struct {
 		name   string
 		fields fields
@@ -400,7 +401,7 @@ func TestBinaryParser_getCommitMsg(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
-				logger:    logger,
+				log:       logger,
 				byteOrder: binary.BigEndian,
 				buffer:    bytes.NewBuffer(tt.fields.src),
 			}
@@ -439,12 +440,17 @@ func TestBinaryParser_getBeginMsg(t *testing.T) {
 			},
 		},
 	}
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
+				log:       logger,
 				byteOrder: binary.BigEndian,
 				buffer:    bytes.NewBuffer(tt.fields.src),
 			}
+
 			if got := p.getBeginMsg(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("getBeginMsg() = %v, want %v", got, tt.want)
 			}
@@ -457,6 +463,10 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 		msg []byte
 		tx  *WalTransaction
 	}
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	metrics := new(monitorMock)
+
 	tests := []struct {
 		name    string
 		args    args
@@ -477,10 +487,12 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 0, 0, 0, 0, 0,
 					0, 0, 0, 5,
 				},
-				tx: NewWalTransaction(),
+				tx: NewWalTransaction(logger, metrics),
 			},
 			want: &WalTransaction{
+				log:           logger,
 				LSN:           7,
+				monitor:       metrics,
 				BeginTime:     &postgresEpoch,
 				RelationStore: make(map[int32]RelationData),
 			},
@@ -497,13 +509,17 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 0, 0, 0, 0, 0,
 				},
 				tx: &WalTransaction{
+					log:           logger,
 					LSN:           7,
+					monitor:       metrics,
 					BeginTime:     &postgresEpoch,
 					RelationStore: make(map[int32]RelationData),
 				},
 			},
 			want: &WalTransaction{
+				log:           logger,
 				LSN:           7,
+				monitor:       metrics,
 				BeginTime:     &postgresEpoch,
 				CommitTime:    &postgresEpoch,
 				RelationStore: make(map[int32]RelationData),
@@ -536,13 +552,17 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 1,
 				},
 				tx: &WalTransaction{
+					log:           logger,
 					LSN:           3,
+					monitor:       metrics,
 					BeginTime:     &postgresEpoch,
 					CommitTime:    &postgresEpoch,
 					RelationStore: make(map[int32]RelationData),
 				},
 			},
 			want: &WalTransaction{
+				log:        logger,
+				monitor:    metrics,
 				LSN:        3,
 				BeginTime:  &postgresEpoch,
 				CommitTime: &postgresEpoch,
@@ -552,6 +572,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						Table:  "users",
 						Columns: []Column{
 							{
+								log:       logger,
 								name:      "id",
 								value:     nil,
 								valueType: pgtype.Int4OID,
@@ -586,6 +607,8 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					49, 48,
 				},
 				tx: &WalTransaction{
+					monitor:    metrics,
+					log:        logger,
 					LSN:        4,
 					BeginTime:  &postgresEpoch,
 					CommitTime: &postgresEpoch,
@@ -595,6 +618,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 							Table:  "users",
 							Columns: []Column{
 								{
+									log:       logger,
 									name:      "id",
 									value:     nil,
 									valueType: pgtype.Int4OID,
@@ -606,6 +630,8 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
+				monitor:    metrics,
+				log:        logger,
 				LSN:        4,
 				BeginTime:  &postgresEpoch,
 				CommitTime: &postgresEpoch,
@@ -615,6 +641,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						Table:  "users",
 						Columns: []Column{
 							{
+								log:       logger,
 								name:      "id",
 								value:     nil,
 								valueType: pgtype.Int4OID,
@@ -630,6 +657,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						Kind:   ActionKindInsert,
 						NewColumns: []Column{
 							{
+								log:       logger,
 								name:      "id",
 								value:     10,
 								valueType: pgtype.Int4OID,
@@ -671,6 +699,8 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					56, 48,
 				},
 				tx: &WalTransaction{
+					log:        logger,
+					monitor:    metrics,
 					LSN:        4,
 					BeginTime:  &postgresEpoch,
 					CommitTime: &postgresEpoch,
@@ -680,6 +710,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 							Table:  "users",
 							Columns: []Column{
 								{
+									log:       logger,
 									name:      "id",
 									value:     nil,
 									valueType: pgtype.Int4OID,
@@ -691,6 +722,8 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
+				monitor:    metrics,
+				log:        logger,
 				LSN:        4,
 				BeginTime:  &postgresEpoch,
 				CommitTime: &postgresEpoch,
@@ -700,6 +733,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						Table:  "users",
 						Columns: []Column{
 							{
+								log:       logger,
 								name:      "id",
 								value:     nil,
 								valueType: pgtype.Int4OID,
@@ -715,6 +749,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						Kind:   ActionKindUpdate,
 						OldColumns: []Column{
 							{
+								log:       logger,
 								name:      "id",
 								value:     77,
 								valueType: pgtype.Int4OID,
@@ -723,6 +758,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						},
 						NewColumns: []Column{
 							{
+								log:       logger,
 								name:      "id",
 								value:     80,
 								valueType: pgtype.Int4OID,
@@ -754,6 +790,8 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					55, 55,
 				},
 				tx: &WalTransaction{
+					monitor:    metrics,
+					log:        logger,
 					LSN:        4,
 					BeginTime:  &postgresEpoch,
 					CommitTime: &postgresEpoch,
@@ -763,6 +801,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 							Table:  "users",
 							Columns: []Column{
 								{
+									log:       logger,
 									name:      "id",
 									value:     nil,
 									valueType: pgtype.Int4OID,
@@ -774,6 +813,8 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
+				monitor:    metrics,
+				log:        logger,
 				LSN:        4,
 				BeginTime:  &postgresEpoch,
 				CommitTime: &postgresEpoch,
@@ -783,6 +824,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						Table:  "users",
 						Columns: []Column{
 							{
+								log:       logger,
 								name:      "id",
 								value:     nil,
 								valueType: pgtype.Int4OID,
@@ -798,6 +840,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						Kind:   ActionKindDelete,
 						OldColumns: []Column{
 							{
+								log:       logger,
 								name:      "id",
 								value:     77,
 								valueType: pgtype.Int4OID,
@@ -822,6 +865,8 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					55, 55,
 				},
 				tx: &WalTransaction{
+					monitor:    metrics,
+					log:        logger,
 					LSN:        4,
 					BeginTime:  &postgresEpoch,
 					CommitTime: &postgresEpoch,
@@ -831,6 +876,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 							Table:  "users",
 							Columns: []Column{
 								{
+									log:       logger,
 									name:      "id",
 									value:     nil,
 									valueType: pgtype.Int4OID,
@@ -842,6 +888,8 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
+				monitor:    metrics,
+				log:        logger,
 				LSN:        4,
 				BeginTime:  &postgresEpoch,
 				CommitTime: &postgresEpoch,
@@ -851,6 +899,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						Table:  "users",
 						Columns: []Column{
 							{
+								log:       logger,
 								name:      "id",
 								value:     nil,
 								valueType: pgtype.Int4OID,
@@ -867,12 +916,14 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
-				logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
+				log:       logger,
 				byteOrder: binary.BigEndian,
 			}
+
 			if err := p.ParseWalMessage(tt.args.msg, tt.args.tx); (err != nil) != tt.wantErr {
 				t.Errorf("ParseWalMessage() error = %v, wantErr %v", err, tt.wantErr)
 			}
+
 			assert.Equal(t, tt.want, tt.args.tx)
 		})
 	}
