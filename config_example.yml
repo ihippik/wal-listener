@@ -10,9 +10,8 @@ listener:
   topicsMap:
     schema_table_name: "notifier"
 logger:
-  caller: false
   level: info
-  format: json
+  fmt: json
 database:
   host: localhost
   port: 5432

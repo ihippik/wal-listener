@@ -3,11 +3,13 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"os"
 
-	"github.com/sirupsen/logrus"
+	scfg "github.com/ihippik/config"
 	"github.com/urfave/cli/v2"
 
+	"github.com/ihippik/wal-listener/v2/config"
 	"github.com/ihippik/wal-listener/v2/listener"
 )
 
@@ -18,7 +20,7 @@ func main() {
 		Usage:   "print only the version",
 	}
 
-	version := getVersion()
+	version := scfg.GetVersion()
 
 	app := &cli.App{
 		Name:    "WAL-Listener",
@@ -33,7 +35,7 @@ func main() {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			cfg, err := getConf(c.String("config"))
+			cfg, err := config.InitConfig(c.String("config"))
 			if err != nil {
 				return fmt.Errorf("get config: %w", err)
 			}
@@ -42,13 +44,15 @@ func main() {
 				return fmt.Errorf("validate config: %w", err)
 			}
 
-			logger := initLogger(cfg.Logger, version)
+			if err := scfg.InitSentry(cfg.Monitoring.SentryDSN, version); err != nil {
+				return fmt.Errorf("init sentry: %w", err)
+			}
 
-			initSentry(cfg.Monitoring.SentryDSN, logger)
+			logger := scfg.InitSlog(cfg.Logger, version, cfg.Monitoring.SentryDSN != "")
 
-			go initMetrics(cfg.Monitoring.PromAddr, logger)
+			go scfg.InitMetrics(cfg.Monitoring.PromAddr, logger)
 
-			conn, rConn, err := initPgxConnections(cfg.Database)
+			conn, rConn, err := initPgxConnections(cfg.Database, logger)
 			if err != nil {
 				return fmt.Errorf("pgx connection: %w", err)
 			}
@@ -64,7 +68,7 @@ func main() {
 				listener.NewRepository(conn),
 				rConn,
 				pub,
-				listener.NewBinaryParser(binary.BigEndian),
+				listener.NewBinaryParser(logger, binary.BigEndian),
 			)
 
 			if err := service.Process(c.Context); err != nil {
@@ -76,6 +80,6 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		logrus.Errorln(err)
+		slog.Error("service error", "error", err)
 	}
 }
