@@ -10,7 +10,7 @@ import (
 
 // BinaryParser represent binary protocol parser.
 type BinaryParser struct {
-	logger    *slog.Logger
+	log       *slog.Logger
 	byteOrder binary.ByteOrder
 	msgType   byte
 	buffer    *bytes.Buffer
@@ -19,7 +19,7 @@ type BinaryParser struct {
 // NewBinaryParser create instance of binary parser.
 func NewBinaryParser(logger *slog.Logger, byteOrder binary.ByteOrder) *BinaryParser {
 	return &BinaryParser{
-		logger:    logger,
+		log:       logger,
 		byteOrder: byteOrder,
 	}
 }
@@ -37,7 +37,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	case BeginMsgType:
 		begin := p.getBeginMsg()
 
-		p.logger.Debug(
+		p.log.Debug(
 			"begin type message was received",
 			slog.Int64("lsn", begin.LSN),
 			slog.Any("xid", begin.XID),
@@ -48,7 +48,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	case CommitMsgType:
 		commit := p.getCommitMsg()
 
-		p.logger.Debug(
+		p.log.Debug(
 			"commit message was received",
 			slog.Int64("lsn", commit.LSN),
 			slog.Int64("transaction_lsn", commit.TransactionLSN),
@@ -60,11 +60,11 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		tx.CommitTime = &commit.Timestamp
 	case OriginMsgType:
-		p.logger.Debug("origin type message was received")
+		p.log.Debug("origin type message was received")
 	case RelationMsgType:
 		relation := p.getRelationMsg()
 
-		p.logger.Debug(
+		p.log.Debug(
 			"relation type message was received",
 			slog.Any("relation_id", relation.ID),
 			slog.String("schema", relation.Namespace),
@@ -81,6 +81,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		for _, rf := range relation.Columns {
 			c := Column{
+				log:       p.log,
 				name:      rf.Name,
 				valueType: int(rf.TypeID),
 				isKey:     rf.Key,
@@ -91,11 +92,11 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		tx.RelationStore[relation.ID] = rd
 
 	case TypeMsgType:
-		p.logger.Debug("type message was received")
+		p.log.Debug("type message was received")
 	case InsertMsgType:
 		insert := p.getInsertMsg()
 
-		p.logger.Debug(
+		p.log.Debug(
 			"insert type message was received",
 			slog.Any("relation_id", insert.RelationID),
 		)
@@ -114,7 +115,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	case UpdateMsgType:
 		upd := p.getUpdateMsg()
 
-		p.logger.Debug("update type message was received", slog.Any("relation_id", upd.RelationID))
+		p.log.Debug("update type message was received", slog.Any("relation_id", upd.RelationID))
 
 		action, err := tx.CreateActionData(
 			upd.RelationID,
@@ -130,7 +131,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	case DeleteMsgType:
 		del := p.getDeleteMsg()
 
-		p.logger.Debug(
+		p.log.Debug(
 			"delete type message was received",
 			slog.Any("relation_id", del.RelationID),
 		)
@@ -291,9 +292,9 @@ func (p *BinaryParser) readTupleData() []TupleData {
 
 		switch sl[0] {
 		case NullDataType:
-			p.logger.Debug("tupleData: null data type")
+			p.log.Debug("tupleData: null data type")
 		case ToastDataType:
-			p.logger.Debug("tupleData: toast data type")
+			p.log.Debug("tupleData: toast data type")
 		case TextDataType:
 			vSize := int(p.readInt32())
 			data[i] = TupleData{Value: p.buffer.Next(vSize)}

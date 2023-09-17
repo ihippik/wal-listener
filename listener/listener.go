@@ -157,12 +157,12 @@ ProcessLoop:
 				return err
 			}
 
-			l.log.Error("received error", "err", err)
+			logger.Error("listener: received error", "err", err)
 		case <-ctx.Done():
-			logger.Debug("context was canceled")
+			logger.Debug("listener: context was canceled")
 
 			if err := l.Stop(); err != nil {
-				logger.Error("listener stop error", "err", err)
+				logger.Error("listener: stop error", "err", err)
 			}
 
 			break ProcessLoop
@@ -176,7 +176,7 @@ ProcessLoop:
 func (l *Listener) slotIsExists() (bool, error) {
 	restartLSNStr, err := l.repository.GetSlotLSN(l.slotName)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("get slot lsn: %w", err)
 	}
 
 	if len(restartLSNStr) == 0 {
@@ -215,11 +215,11 @@ func (l *Listener) Stream(ctx context.Context) {
 
 	go l.SendPeriodicHeartbeats(ctx)
 
-	tx := NewWalTransaction()
+	tx := NewWalTransaction(l.log)
 
 	for {
 		if err := ctx.Err(); err != nil {
-			l.errChannel <- newListenerError("context canceled", err)
+			l.errChannel <- newListenerError("stream: context canceled", err)
 			break
 		}
 
@@ -234,8 +234,8 @@ func (l *Listener) Stream(ctx context.Context) {
 				l.log.Debug("receive wal message", slog.Uint64("wal", msg.WalMessage.WalStart))
 
 				if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
-					l.log.Error("msg parse failed", "err", err)
-					l.errChannel <- fmt.Errorf("unmarshal wal message: %w", err)
+					l.log.Error("message parse failed", "err", err)
+					l.errChannel <- fmt.Errorf("parse wal message: %w", err)
 
 					continue
 				}
