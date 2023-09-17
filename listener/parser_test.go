@@ -3,6 +3,8 @@ package listener
 import (
 	"bytes"
 	"encoding/binary"
+	"io"
+	"log/slog"
 	"reflect"
 	"testing"
 
@@ -14,6 +16,7 @@ func TestBinaryParser_readTupleData(t *testing.T) {
 	type fields struct {
 		buffer *bytes.Buffer
 	}
+
 	tests := []struct {
 		name   string
 		fields fields
@@ -58,9 +61,13 @@ func TestBinaryParser_readTupleData(t *testing.T) {
 			},
 		},
 	}
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
+				logger:    logger,
 				byteOrder: binary.BigEndian,
 				buffer:    tt.fields.buffer,
 			}
@@ -107,9 +114,13 @@ func TestBinaryParser_readColumns(t *testing.T) {
 			},
 		},
 	}
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
+				logger:    logger,
 				byteOrder: binary.BigEndian,
 				buffer:    tt.fields.buffer,
 			}
@@ -156,9 +167,13 @@ func TestBinaryParser_getRelationMsg(t *testing.T) {
 			},
 		},
 	}
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
+				logger:    logger,
 				byteOrder: binary.BigEndian,
 				buffer:    bytes.NewBuffer(tt.fields.src),
 			}
@@ -275,12 +290,17 @@ func TestBinaryParser_getDeleteMsg(t *testing.T) {
 			},
 		},
 	}
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
+				logger:    logger,
 				byteOrder: binary.BigEndian,
 				buffer:    bytes.NewBuffer(tt.fields.src),
 			}
+
 			if got := p.getDeleteMsg(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("getDeleteMsg() = %v, want %v", got, tt.want)
 			}
@@ -326,9 +346,13 @@ func TestBinaryParser_getInsertMsg(t *testing.T) {
 			},
 		},
 	}
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
+				logger:    logger,
 				byteOrder: binary.BigEndian,
 				buffer:    bytes.NewBuffer(tt.fields.src),
 			}
@@ -370,9 +394,13 @@ func TestBinaryParser_getCommitMsg(t *testing.T) {
 			},
 		},
 	}
+
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
+				logger:    logger,
 				byteOrder: binary.BigEndian,
 				buffer:    bytes.NewBuffer(tt.fields.src),
 			}
@@ -835,9 +863,11 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 			wantErr: true,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &BinaryParser{
+				logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
 				byteOrder: binary.BigEndian,
 			}
 			if err := p.ParseWalMessage(tt.args.msg, tt.args.tx); (err != nil) != tt.wantErr {

@@ -1,9 +1,13 @@
 package config
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/asaskevich/govalidator"
+	"github.com/spf13/viper"
+
+	cfg "github.com/ihippik/config"
 )
 
 type PublisherType string
@@ -18,8 +22,8 @@ type Config struct {
 	Listener   *ListenerCfg  `valid:"required"`
 	Database   *DatabaseCfg  `valid:"required"`
 	Publisher  *PublisherCfg `valid:"required"`
-	Logger     *LoggerCfg    `valid:"required"`
-	Monitoring *MonitoringCfg
+	Logger     *cfg.Logger   `valid:"required"`
+	Monitoring *cfg.Monitoring
 }
 
 // ListenerCfg path of the listener config.
@@ -44,19 +48,6 @@ type PublisherCfg struct {
 	CACert      string `json:"ca_cert"`
 }
 
-// MonitoringCfg monitoring configuration.
-type MonitoringCfg struct {
-	SentryDSN string
-	PromAddr  string
-}
-
-// LoggerCfg path of the logger config.
-type LoggerCfg struct {
-	Caller bool
-	Level  string
-	Format string
-}
-
 // DatabaseCfg path of the PostgreSQL DB config.
 type DatabaseCfg struct {
 	Host     string `valid:"required"`
@@ -75,4 +66,21 @@ type FilterStruct struct {
 func (c Config) Validate() error {
 	_, err := govalidator.ValidateStruct(c)
 	return err
+}
+
+// InitConfig load config from file.
+func InitConfig(path string) (*Config, error) {
+	var conf Config
+
+	viper.SetConfigFile(path)
+
+	if err := viper.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("error reading config: %w", err)
+	}
+
+	if err := viper.Unmarshal(&conf); err != nil {
+		return nil, fmt.Errorf("unable to decode into config struct: %w", err)
+	}
+
+	return &conf, nil
 }

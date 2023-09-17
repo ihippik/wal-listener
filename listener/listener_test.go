@@ -5,13 +5,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
@@ -88,15 +88,14 @@ func TestListener_slotIsExists(t *testing.T) {
 		},
 	}
 
-	logger := logrus.New()
-	logger.Out = io.Discard
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
 
 			w := &Listener{
-				log:        logrus.NewEntry(logger),
+				log:        logger,
 				slotName:   tt.fields.slotName,
 				repository: repo,
 			}
@@ -133,8 +132,7 @@ func TestListener_Stop(t *testing.T) {
 			Once()
 	}
 
-	logger := logrus.New()
-	logger.Out = io.Discard
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
 	tests := []struct {
 		name    string
@@ -165,11 +163,12 @@ func TestListener_Stop(t *testing.T) {
 			wantErr: errors.New("replicator close: replication err"),
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
 			w := &Listener{
-				log:        logrus.NewEntry(logger),
+				log:        logger,
 				publisher:  publ,
 				replicator: repl,
 				repository: repo,
@@ -254,6 +253,7 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
 			w := &Listener{
+				log:        slog.New(slog.NewJSONHandler(io.Discard, nil)),
 				replicator: repl,
 				lsn:        tt.fields.restartLSN,
 			}
@@ -284,9 +284,11 @@ func standByStatusMatcher(want *pgx.StandbyStatus) any {
 
 func TestListener_AckWalMessage(t *testing.T) {
 	repl := new(replicatorMock)
+
 	type fields struct {
 		restartLSN uint64
 	}
+
 	type args struct {
 		LSN uint64
 	}
@@ -352,10 +354,12 @@ func TestListener_AckWalMessage(t *testing.T) {
 			wantErr: true,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
 			w := &Listener{
+				log:        slog.New(slog.NewJSONHandler(io.Discard, nil)),
 				replicator: repl,
 				lsn:        tt.fields.restartLSN,
 			}
@@ -804,8 +808,7 @@ func TestListener_Stream(t *testing.T) {
 		},
 	}
 
-	logger := logrus.New()
-	logger.Out = io.Discard
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -813,7 +816,7 @@ func TestListener_Stream(t *testing.T) {
 
 			ctx, cancel := context.WithTimeout(context.Background(), tt.args.timeout)
 			w := &Listener{
-				log:        logrus.NewEntry(logger),
+				log:        logger,
 				cfg:        tt.fields.config,
 				slotName:   tt.fields.slotName,
 				publisher:  publ,

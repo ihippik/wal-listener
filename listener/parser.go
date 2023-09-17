@@ -4,21 +4,22 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 // BinaryParser represent binary protocol parser.
 type BinaryParser struct {
+	logger    *slog.Logger
 	byteOrder binary.ByteOrder
 	msgType   byte
 	buffer    *bytes.Buffer
 }
 
 // NewBinaryParser create instance of binary parser.
-func NewBinaryParser(byteOrder binary.ByteOrder) *BinaryParser {
+func NewBinaryParser(logger *slog.Logger, byteOrder binary.ByteOrder) *BinaryParser {
 	return &BinaryParser{
+		logger:    logger,
 		byteOrder: byteOrder,
 	}
 }
@@ -36,26 +37,22 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	case BeginMsgType:
 		begin := p.getBeginMsg()
 
-		logrus.
-			WithFields(
-				logrus.Fields{
-					"lsn": begin.LSN,
-					"xid": begin.XID,
-				}).
-			Debugln("begin type message was received")
+		p.logger.Debug(
+			"begin type message was received",
+			slog.Int64("lsn", begin.LSN),
+			slog.Any("xid", begin.XID),
+		)
 
 		tx.LSN = begin.LSN
 		tx.BeginTime = &begin.Timestamp
 	case CommitMsgType:
 		commit := p.getCommitMsg()
 
-		logrus.
-			WithFields(
-				logrus.Fields{
-					"lsn":             commit.LSN,
-					"transaction_lsn": commit.TransactionLSN,
-				}).
-			Debugln("commit message was received")
+		p.logger.Debug(
+			"commit message was received",
+			slog.Int64("lsn", commit.LSN),
+			slog.Int64("transaction_lsn", commit.TransactionLSN),
+		)
 
 		if tx.LSN > 0 && tx.LSN != commit.LSN {
 			return fmt.Errorf("commit: %w", errMessageLost)
@@ -63,17 +60,15 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		tx.CommitTime = &commit.Timestamp
 	case OriginMsgType:
-		logrus.Debugln("origin type message was received")
+		p.logger.Debug("origin type message was received")
 	case RelationMsgType:
 		relation := p.getRelationMsg()
 
-		logrus.
-			WithFields(
-				logrus.Fields{
-					"relation_id": relation.ID,
-					"replica":     relation.Replica,
-				}).
-			Debugln("relation type message was received")
+		p.logger.Debug(
+			"relation type message was received",
+			slog.Any("relation_id", relation.ID),
+			slog.String("schema", relation.Namespace),
+		)
 
 		if tx.LSN == 0 {
 			return fmt.Errorf("commit: %w", errMessageLost)
@@ -96,16 +91,14 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		tx.RelationStore[relation.ID] = rd
 
 	case TypeMsgType:
-		logrus.Debugln("type message was received")
+		p.logger.Debug("type message was received")
 	case InsertMsgType:
 		insert := p.getInsertMsg()
 
-		logrus.
-			WithFields(
-				logrus.Fields{
-					"relation_id": insert.RelationID,
-				}).
-			Debugln("insert type message was received")
+		p.logger.Debug(
+			"insert type message was received",
+			slog.Any("relation_id", insert.RelationID),
+		)
 
 		action, err := tx.CreateActionData(
 			insert.RelationID,
@@ -113,7 +106,6 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 			insert.NewRow,
 			ActionKindInsert,
 		)
-
 		if err != nil {
 			return fmt.Errorf("create action data: %w", err)
 		}
@@ -122,12 +114,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	case UpdateMsgType:
 		upd := p.getUpdateMsg()
 
-		logrus.
-			WithFields(
-				logrus.Fields{
-					"relation_id": upd.RelationID,
-				}).
-			Debugln("update type message was received")
+		p.logger.Debug("update type message was received", slog.Any("relation_id", upd.RelationID))
 
 		action, err := tx.CreateActionData(
 			upd.RelationID,
@@ -143,12 +130,10 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	case DeleteMsgType:
 		del := p.getDeleteMsg()
 
-		logrus.
-			WithFields(
-				logrus.Fields{
-					"relation_id": del.RelationID,
-				}).
-			Debugln("delete type message was received")
+		p.logger.Debug(
+			"delete type message was received",
+			slog.Any("relation_id", del.RelationID),
+		)
 
 		action, err := tx.CreateActionData(
 			del.RelationID,
@@ -306,9 +291,9 @@ func (p *BinaryParser) readTupleData() []TupleData {
 
 		switch sl[0] {
 		case NullDataType:
-			logrus.Debugln("tupleData: null data type")
+			p.logger.Debug("tupleData: null data type")
 		case ToastDataType:
-			logrus.Debugln("tupleData: toast data type")
+			p.logger.Debug("tupleData: toast data type")
 		case TextDataType:
 			vSize := int(p.readInt32())
 			data[i] = TupleData{Value: p.buffer.Next(vSize)}

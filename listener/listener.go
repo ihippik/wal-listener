@@ -4,18 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"sync"
 	"time"
 
+	"github.com/ihippik/wal-listener/v2/config"
+	"github.com/ihippik/wal-listener/v2/publisher"
 	"github.com/jackc/pgx"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/sirupsen/logrus"
-
-	"github.com/ihippik/wal-listener/v2/config"
-	"github.com/ihippik/wal-listener/v2/publisher"
 )
 
 const errorBufferSize = 100
@@ -51,7 +50,7 @@ type repository interface {
 // Listener main service struct.
 type Listener struct {
 	cfg        *config.Config
-	log        *logrus.Entry
+	log        *slog.Logger
 	mu         sync.RWMutex
 	slotName   string
 	publisher  eventPublisher
@@ -81,7 +80,7 @@ var (
 // NewWalListener create and initialize new service instance.
 func NewWalListener(
 	cfg *config.Config,
-	log *logrus.Entry,
+	log *slog.Logger,
 	repo repository,
 	repl replication,
 	publ eventPublisher,
@@ -101,15 +100,15 @@ func NewWalListener(
 
 // Process is main service entry point.
 func (l *Listener) Process(ctx context.Context) error {
-	logger := l.log.WithField("slot_name", l.slotName)
+	logger := l.log.With("slot_name", l.slotName)
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
-	logger.Infoln("service was started")
+	logger.Info("service was started")
 
 	if err := l.repository.CreatePublication(publicationName); err != nil {
-		logger.WithError(err).Warnln("publication creation was skipped")
+		logger.Warn("publication creation was skipped", "err", err)
 	}
 
 	slotIsExists, err := l.slotIsExists()
@@ -129,9 +128,10 @@ func (l *Listener) Process(ctx context.Context) error {
 		}
 
 		l.setLSN(lsn)
-		logger.Infoln("new slot was created")
+
+		logger.Info("new slot was created", slog.String("slot", l.slotName))
 	} else {
-		logger.Infoln("slot already exists, LSN updated")
+		logger.Info("slot already exists, LSN updated")
 	}
 
 	go l.Stream(ctx)
@@ -157,12 +157,12 @@ ProcessLoop:
 				return err
 			}
 
-			l.log.WithError(err).Errorln("received error")
+			l.log.Error("received error", "err", err)
 		case <-ctx.Done():
-			logger.Debugln("context was canceled")
+			logger.Debug("context was canceled")
 
 			if err := l.Stop(); err != nil {
-				logger.WithError(err).Errorln("listener stop error")
+				logger.Error("listener stop error", "err", err)
 			}
 
 			break ProcessLoop
@@ -180,7 +180,7 @@ func (l *Listener) slotIsExists() (bool, error) {
 	}
 
 	if len(restartLSNStr) == 0 {
-		l.log.WithField("slot_name", l.slotName).Warningln("restart LSN not found")
+		l.log.Warn("restart LSN not found", slog.String("slot_name", l.slotName))
 		return false, nil
 	}
 
@@ -192,10 +192,6 @@ func (l *Listener) slotIsExists() (bool, error) {
 	l.setLSN(lsn)
 
 	return true, nil
-}
-
-func publicationNames(publication string) string {
-	return fmt.Sprintf(`publication_names '%s'`, publication)
 }
 
 const (
@@ -223,22 +219,22 @@ func (l *Listener) Stream(ctx context.Context) {
 
 	for {
 		if err := ctx.Err(); err != nil {
-			l.errChannel <- newListenerError("read msg", err)
+			l.errChannel <- newListenerError("context canceled", err)
 			break
 		}
 
 		msg, err := l.replicator.WaitForReplicationMessage(ctx)
 		if err != nil {
-			l.errChannel <- newListenerError("WaitForReplicationMessage()", err)
+			l.errChannel <- newListenerError("WaitForReplicationMessage", err)
 			continue
 		}
 
 		if msg != nil {
 			if msg.WalMessage != nil {
-				l.log.WithField("wal", msg.WalMessage.WalStart).Debugln("receive wal message")
+				l.log.Debug("receive wal message", slog.Uint64("wal", msg.WalMessage.WalStart))
 
 				if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
-					l.log.WithError(err).Errorln("msg parse failed")
+					l.log.Error("msg parse failed", "err", err)
 					l.errChannel <- fmt.Errorf("unmarshal wal message: %w", err)
 
 					continue
@@ -257,12 +253,13 @@ func (l *Listener) Stream(ctx context.Context) {
 
 						publishedEvents.With(prometheus.Labels{"subject": subjectName, "table": event.Table}).Inc()
 
-						l.log.WithFields(logrus.Fields{
-							"subject": subjectName,
-							"action":  event.Action,
-							"table":   event.Table,
-							"lsn":     l.readLSN(),
-						}).Infoln("event was sent")
+						l.log.Info(
+							"event was sent",
+							slog.String("subject", subjectName),
+							slog.String("action", event.Action),
+							slog.String("table", event.Table),
+							slog.Uint64("lsn", l.readLSN()),
+						)
 					}
 
 					tx.Clear()
@@ -274,19 +271,19 @@ func (l *Listener) Stream(ctx context.Context) {
 						continue
 					}
 
-					l.log.WithField("lsn", l.readLSN()).Debugln("ack wal msg")
+					l.log.Debug("ack wal msg", slog.Uint64("lsn", l.readLSN()))
 				}
 			}
 
 			if msg.ServerHeartbeat != nil {
-				//FIXME panic if there have been no messages for a long time.
-				l.log.WithFields(logrus.Fields{
-					"server_wal_end": msg.ServerHeartbeat.ServerWalEnd,
-					"server_time":    msg.ServerHeartbeat.ServerTime,
-				}).Debugln("received server heartbeat")
+				l.log.Debug(
+					"received server heartbeat",
+					slog.Uint64("server_wal_end", msg.ServerHeartbeat.ServerWalEnd),
+					slog.Uint64("server_time", msg.ServerHeartbeat.ServerTime),
+				)
 
 				if msg.ServerHeartbeat.ReplyRequested == 1 {
-					l.log.Debugln("status requested")
+					l.log.Debug("status requested")
 
 					if err = l.SendStandbyStatus(); err != nil {
 						l.errChannel <- fmt.Errorf("send standby status: %w", err)
@@ -295,6 +292,10 @@ func (l *Listener) Stream(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func publicationNames(publication string) string {
+	return fmt.Sprintf(`publication_names '%s'`, publication)
 }
 
 // Stop is a finalizer function.
@@ -307,7 +308,7 @@ func (l *Listener) Stop() error {
 		return fmt.Errorf("replicator close: %w", err)
 	}
 
-	l.log.Infoln("service was stopped")
+	l.log.Info("service was stopped")
 
 	return nil
 }
@@ -320,19 +321,15 @@ func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			l.log.WithField("func", "SendPeriodicHeartbeats").
-				Infoln("context was canceled, stop sending heartbeats")
-
+			l.log.Info("periodic heartbeats: context was canceled")
 			return
 		case <-heart.C:
-			{
-				if err := l.SendStandbyStatus(); err != nil {
-					l.log.WithError(err).Errorln("failed to send status heartbeat")
-					continue
-				}
-
-				l.log.Debugln("sending periodic status heartbeat")
+			if err := l.SendStandbyStatus(); err != nil {
+				l.log.Error("failed to send status heartbeat", "err", err)
+				continue
 			}
+
+			l.log.Debug("sending periodic status heartbeat")
 		}
 	}
 }
