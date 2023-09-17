@@ -465,6 +465,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	metrics := new(monitorMock)
 
 	tests := []struct {
 		name    string
@@ -486,11 +487,12 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 0, 0, 0, 0, 0,
 					0, 0, 0, 5,
 				},
-				tx: NewWalTransaction(logger),
+				tx: NewWalTransaction(logger, metrics),
 			},
 			want: &WalTransaction{
 				log:           logger,
 				LSN:           7,
+				monitor:       metrics,
 				BeginTime:     &postgresEpoch,
 				RelationStore: make(map[int32]RelationData),
 			},
@@ -509,6 +511,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				tx: &WalTransaction{
 					log:           logger,
 					LSN:           7,
+					monitor:       metrics,
 					BeginTime:     &postgresEpoch,
 					RelationStore: make(map[int32]RelationData),
 				},
@@ -516,6 +519,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 			want: &WalTransaction{
 				log:           logger,
 				LSN:           7,
+				monitor:       metrics,
 				BeginTime:     &postgresEpoch,
 				CommitTime:    &postgresEpoch,
 				RelationStore: make(map[int32]RelationData),
@@ -550,6 +554,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				tx: &WalTransaction{
 					log:           logger,
 					LSN:           3,
+					monitor:       metrics,
 					BeginTime:     &postgresEpoch,
 					CommitTime:    &postgresEpoch,
 					RelationStore: make(map[int32]RelationData),
@@ -557,6 +562,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 			},
 			want: &WalTransaction{
 				log:        logger,
+				monitor:    metrics,
 				LSN:        3,
 				BeginTime:  &postgresEpoch,
 				CommitTime: &postgresEpoch,
@@ -601,6 +607,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					49, 48,
 				},
 				tx: &WalTransaction{
+					monitor:    metrics,
 					log:        logger,
 					LSN:        4,
 					BeginTime:  &postgresEpoch,
@@ -623,6 +630,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
+				monitor:    metrics,
 				log:        logger,
 				LSN:        4,
 				BeginTime:  &postgresEpoch,
@@ -692,6 +700,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 				tx: &WalTransaction{
 					log:        logger,
+					monitor:    metrics,
 					LSN:        4,
 					BeginTime:  &postgresEpoch,
 					CommitTime: &postgresEpoch,
@@ -713,6 +722,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
+				monitor:    metrics,
 				log:        logger,
 				LSN:        4,
 				BeginTime:  &postgresEpoch,
@@ -780,6 +790,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					55, 55,
 				},
 				tx: &WalTransaction{
+					monitor:    metrics,
 					log:        logger,
 					LSN:        4,
 					BeginTime:  &postgresEpoch,
@@ -802,6 +813,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
+				monitor:    metrics,
 				log:        logger,
 				LSN:        4,
 				BeginTime:  &postgresEpoch,
@@ -853,6 +865,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					55, 55,
 				},
 				tx: &WalTransaction{
+					monitor:    metrics,
 					log:        logger,
 					LSN:        4,
 					BeginTime:  &postgresEpoch,
@@ -875,6 +888,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
+				monitor:    metrics,
 				log:        logger,
 				LSN:        4,
 				BeginTime:  &postgresEpoch,

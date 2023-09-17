@@ -452,6 +452,7 @@ func TestListener_Stream(t *testing.T) {
 	uuid.SetRand(bytes.NewReader(make([]byte, 512)))
 
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	metrics := new(monitorMock)
 
 	tests := []struct {
 		name   string
@@ -493,6 +494,7 @@ func TestListener_Stream(t *testing.T) {
 				setParseWalMessageOnce(
 					[]byte(`some bytes`),
 					&WalTransaction{
+						monitor:       metrics,
 						log:           logger,
 						LSN:           0,
 						BeginTime:     nil,
@@ -686,6 +688,7 @@ func TestListener_Stream(t *testing.T) {
 				setParseWalMessageOnce(
 					[]byte(`some bytes`),
 					&WalTransaction{
+						monitor:       metrics,
 						log:           logger,
 						LSN:           0,
 						BeginTime:     nil,
@@ -766,6 +769,7 @@ func TestListener_Stream(t *testing.T) {
 				setParseWalMessageOnce(
 					[]byte(`some bytes`),
 					&WalTransaction{
+						monitor:       metrics,
 						log:           logger,
 						LSN:           0,
 						BeginTime:     nil,
@@ -829,6 +833,7 @@ func TestListener_Stream(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tt.args.timeout)
 			w := &Listener{
 				log:        logger,
+				monitor:    metrics,
 				cfg:        tt.fields.config,
 				slotName:   tt.fields.slotName,
 				publisher:  publ,

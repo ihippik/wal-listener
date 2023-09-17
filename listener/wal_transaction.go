@@ -8,8 +8,6 @@ import (
 
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
-	"github.com/prometheus/client_golang/prometheus"
-
 	"github.com/ihippik/wal-listener/v2/publisher"
 )
 
@@ -23,9 +21,14 @@ const (
 	ActionKindDelete ActionKind = "DELETE"
 )
 
+type transactionMonitor interface {
+	IncFilterSkippedEvents(table string)
+}
+
 // WalTransaction transaction specified WAL message.
 type WalTransaction struct {
 	log           *slog.Logger
+	monitor       transactionMonitor
 	LSN           int64
 	BeginTime     *time.Time
 	CommitTime    *time.Time
@@ -34,9 +37,10 @@ type WalTransaction struct {
 }
 
 // NewWalTransaction create and initialize new WAL transaction.
-func NewWalTransaction(log *slog.Logger) *WalTransaction {
+func NewWalTransaction(log *slog.Logger, monitor transactionMonitor) *WalTransaction {
 	return &WalTransaction{
 		log:           log,
+		monitor:       monitor,
 		RelationStore: make(map[int32]RelationData),
 	}
 }
@@ -228,7 +232,7 @@ func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []
 			continue
 		}
 
-		filterSkippedEvents.With(prometheus.Labels{"table": item.Table}).Inc()
+		w.monitor.IncFilterSkippedEvents(item.Table)
 
 		w.log.Info(
 			"wal-message was skipped by filter",
