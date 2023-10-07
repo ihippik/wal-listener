@@ -62,6 +62,12 @@ func main() {
 				return fmt.Errorf("factory publisher: %w", err)
 			}
 
+			defer func() {
+				if err := pub.Close(); err != nil {
+					slog.Error("close publisher failed", "err", err.Error())
+				}
+			}()
+
 			service := listener.NewWalListener(
 				cfg,
 				logger,

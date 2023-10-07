@@ -33,6 +33,11 @@ func (p *KafkaPublisher) Publish(s string, event Event) error {
 	return err
 }
 
+// Close connection close.
+func (p *KafkaPublisher) Close() error {
+	return p.producer.Close()
+}
+
 // NewProducer return new Kafka producer instance.
 func NewProducer(pCfg *config.PublisherCfg) (sarama.SyncProducer, error) {
 	cfg := sarama.NewConfig()
