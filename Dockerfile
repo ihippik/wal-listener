@@ -8,8 +8,8 @@ RUN go build -buildmode=pie -trimpath -ldflags='-s -w -buildid' -o app ./cmd/wal
 
 FROM cgr.dev/chainguard/busybox:latest-glibc
 
-WORKDIR /run/app
+WORKDIR /app/
 
 COPY --from=build-env /listener/app /app/
 
-CMD /app/app
+CMD ./app
