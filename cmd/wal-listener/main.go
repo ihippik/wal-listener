@@ -79,7 +79,7 @@ func main() {
 			)
 
 			if err := service.Process(c.Context); err != nil {
-				return fmt.Errorf("service process: %w", err)
+				slog.Error("service process failed", "err", err.Error())
 			}
 
 			return nil
@@ -87,6 +87,6 @@ func main() {
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		slog.Error("service error", "error", err)
+		slog.Error("service error", "err", err)
 	}
 }
