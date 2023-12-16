@@ -20,5 +20,6 @@ func (r *repositoryMock) Close() error {
 }
 
 func (r *repositoryMock) CreatePublication(name string) (err error) {
-	panic("implement me")
+	args := r.Called(name)
+	return args.Error(0)
 }

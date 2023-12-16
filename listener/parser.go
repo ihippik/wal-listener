@@ -150,6 +150,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	default:
 		return fmt.Errorf("%w : %s", errUnknownMessageType, []byte{p.msgType})
 	}
+
 	return nil
 }
 
@@ -192,6 +193,7 @@ func (p *BinaryParser) getUpdateMsg() Update {
 	u.RelationID = p.readInt32()
 	u.KeyTuple = p.charIsExists('K')
 	u.OldTuple = p.charIsExists('O')
+
 	if u.KeyTuple || u.OldTuple {
 		u.OldRow = p.readTupleData()
 	}

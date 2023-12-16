@@ -53,7 +53,7 @@ func (n NatsPublisher) CreateStream(streamName string) error {
 	}
 
 	if stream == nil {
-		var streamSubjects = streamName + ".*"
+		streamSubjects := streamName + ".*"
 
 		if _, err = n.js.AddStream(&nats.StreamConfig{
 			Name:     streamName,

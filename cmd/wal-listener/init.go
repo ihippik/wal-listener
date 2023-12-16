@@ -14,7 +14,6 @@ import (
 // initPgxConnections initialise db and replication connections.
 func initPgxConnections(cfg *config.DatabaseCfg, logger *slog.Logger) (*pgx.Conn, *pgx.ReplicationConn, error) {
 	pgxConf := pgx.ConnConfig{
-		// TODO logger
 		LogLevel: pgx.LogLevelInfo,
 		Logger:   pgxLogger{logger},
 		Host:     cfg.Host,
@@ -76,7 +75,7 @@ func factoryPublisher(cfg *config.PublisherCfg, logger *slog.Logger) (eventPubli
 			return nil, fmt.Errorf("create stream: %w", err)
 		}
 
-		return pub, err
+		return pub, nil
 	default:
 		return nil, fmt.Errorf("unknown publisher type: %s", cfg.Type)
 	}
