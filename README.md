@@ -4,7 +4,6 @@
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/ihippik/wal-listener)
 ![GitHub tag (latest SemVer)](https://img.shields.io/github/v/tag/ihippik/wal-listener)
 [![Build Status](https://travis-ci.com/ihippik/wal-listener.svg?branch=master)](https://travis-ci.com/ihippik/wal-listener)
-![Codecov](https://img.shields.io/codecov/c/github/ihippik/wal-listener)
 [![Publish Docker image](https://github.com/ihippik/wal-listener/actions/workflows/github-actions.yml/badge.svg)](https://github.com/ihippik/wal-listener/actions/workflows/github-actions.yml)
 
 ![WAL-Listener](wal-listener.png)
