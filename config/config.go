@@ -17,7 +17,7 @@ const (
 	PublisherTypeKafka PublisherType = "kafka"
 )
 
-// Config for wal-listener/
+// Config for wal-listener.
 type Config struct {
 	Listener   *ListenerCfg  `valid:"required"`
 	Database   *DatabaseCfg  `valid:"required"`
@@ -36,7 +36,7 @@ type ListenerCfg struct {
 	TopicsMap         map[string]string
 }
 
-// PublisherCfg represent configuration for any types pulisher.
+// PublisherCfg represent configuration for any types publisher.
 type PublisherCfg struct {
 	Type        PublisherType `valid:"required"`
 	Address     string        `valid:"required"`

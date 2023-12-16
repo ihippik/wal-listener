@@ -11,15 +11,26 @@ type replicatorMock struct {
 	mock.Mock
 }
 
-func (r *replicatorMock) CreateReplicationSlotEx(slotName, outputPlugin string) (consistentPoint string, snapshotName string, err error) {
-	panic("implement me")
+func (r *replicatorMock) CreateReplicationSlotEx(slotName, outputPlugin string) (
+	consistentPoint string,
+	snapshotName string,
+	err error,
+) {
+	args := r.Called(slotName, outputPlugin)
+	return args.Get(0).(string), args.Get(1).(string), args.Error(2)
 }
 
 func (r *replicatorMock) DropReplicationSlot(slotName string) (err error) {
-	panic("implement me")
+	args := r.Called(slotName)
+	return args.Error(1)
 }
 
-func (r *replicatorMock) StartReplication(slotName string, startLsn uint64, timeline int64, pluginArguments ...string) (err error) {
+func (r *replicatorMock) StartReplication(
+	slotName string,
+	startLsn uint64,
+	timeline int64,
+	pluginArguments ...string,
+) (err error) {
 	args := r.Called(slotName, startLsn, timeline, pluginArguments)
 	return args.Error(0)
 }

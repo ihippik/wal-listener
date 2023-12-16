@@ -22,15 +22,17 @@ func NewKafkaPublisher(producer sarama.SyncProducer) *KafkaPublisher {
 	return &KafkaPublisher{producer: producer}
 }
 
-func (p *KafkaPublisher) Publish(s string, event Event) error {
+func (p *KafkaPublisher) Publish(topic string, event Event) error {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	_, _, err = p.producer.SendMessage(prepareMessage(s, data))
+	if _, _, err = p.producer.SendMessage(prepareMessage(topic, data)); err != nil {
+		return fmt.Errorf("send message: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 // Close connection close.
@@ -48,7 +50,7 @@ func NewProducer(pCfg *config.PublisherCfg) (sarama.SyncProducer, error) {
 	if pCfg.EnableTLS {
 		tlsCfg, err := newTLSCfg(pCfg.ClientCert, pCfg.ClientKey, pCfg.CACert)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("new TLS config: %w", err)
 		}
 
 		cfg.Net.TLS.Enable = true
@@ -56,25 +58,26 @@ func NewProducer(pCfg *config.PublisherCfg) (sarama.SyncProducer, error) {
 	}
 
 	producer, err := sarama.NewSyncProducer([]string{pCfg.Address}, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("new sync producer: %w", err)
+	}
 
-	return producer, err
+	return producer, nil
 }
 
 // prepareMessage prepare message for Kafka producer.
 func prepareMessage(topic string, data []byte) *sarama.ProducerMessage {
-	msg := &sarama.ProducerMessage{
+	return &sarama.ProducerMessage{
 		Topic:     topic,
 		Partition: -1,
 		Value:     sarama.ByteEncoder(data),
 	}
-
-	return msg
 }
 
 func newTLSCfg(certFile, keyFile, caCert string) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load x509 key pair: %w", err)
 	}
 
 	cfg := &tls.Config{
@@ -83,7 +86,7 @@ func newTLSCfg(certFile, keyFile, caCert string) (*tls.Config, error) {
 
 	ca, err := os.ReadFile(caCert)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read file: %w", err)
 	}
 
 	caCertPool := x509.NewCertPool()

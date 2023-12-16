@@ -113,11 +113,13 @@ func (c *Column) AssertValue(src []byte) {
 		val, err = uuid.Parse(strSrc)
 	case JSONBOID:
 		var m any
+
 		if src[0] == '[' {
 			m = make([]any, 0)
 		} else {
 			m = make(map[string]any)
 		}
+
 		err = json.Unmarshal(src, &m)
 		val = m
 	default:
@@ -150,7 +152,12 @@ func (w *WalTransaction) Clear() {
 }
 
 // CreateActionData create action  from WAL message data.
-func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData, newRows []TupleData, kind ActionKind) (a ActionData, err error) {
+func (w *WalTransaction) CreateActionData(
+	relationID int32,
+	oldRows []TupleData,
+	newRows []TupleData,
+	kind ActionKind,
+) (a ActionData, err error) {
 	rel, ok := w.RelationStore[relationID]
 	if !ok {
 		return a, errRelationNotFound
@@ -162,7 +169,7 @@ func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData,
 		Kind:   kind,
 	}
 
-	var oldColumns []Column
+	oldColumns := make([]Column, 0, len(oldRows))
 
 	for num, row := range oldRows {
 		column := Column{
@@ -178,7 +185,7 @@ func (w *WalTransaction) CreateActionData(relationID int32, oldRows []TupleData,
 
 	a.OldColumns = oldColumns
 
-	var newColumns []Column
+	newColumns := make([]Column, 0, len(newRows))
 
 	for num, row := range newRows {
 		column := Column{

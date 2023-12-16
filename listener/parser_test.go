@@ -664,6 +664,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 								isKey:     true,
 							},
 						},
+						OldColumns: []Column{},
 					},
 				},
 			},
@@ -835,9 +836,10 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 				Actions: []ActionData{
 					{
-						Schema: "public",
-						Table:  "users",
-						Kind:   ActionKindDelete,
+						Schema:     "public",
+						Table:      "users",
+						Kind:       ActionKindDelete,
+						NewColumns: []Column{},
 						OldColumns: []Column{
 							{
 								log:       logger,

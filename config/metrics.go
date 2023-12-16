@@ -14,13 +14,13 @@ type Metrics struct {
 func NewMetrics() *Metrics {
 	return &Metrics{
 		publishedEvents: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "published_events",
+			Name: "published_events_total",
 			Help: "The total number of published events",
 		},
 			[]string{"app", "subject", "table"},
 		),
 		filterSkippedEvents: promauto.NewCounterVec(prometheus.CounterOpts{
-			Name: "filter_skipped_events",
+			Name: "filter_skipped_events_total",
 			Help: "The total number of skipped events",
 		},
 			[]string{"app", "table"},

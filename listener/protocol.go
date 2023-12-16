@@ -108,7 +108,8 @@ type (
 		KeyTuple bool
 		// Identifies the following TupleData message as a old tuple.
 		OldTuple bool
-		// TupleData message part representing the contents of the old tuple or primary key (Only present if the previous 'O' or 'K' part is present.)
+		// TupleData message part representing the contents of the old tuple
+		// or primary key (Only present if the previous 'O' or 'K' part is present.)
 		OldRow []TupleData
 		// Identifies the following TupleData message as a new tuple.
 		NewTuple bool
