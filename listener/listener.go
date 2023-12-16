@@ -72,7 +72,7 @@ func NewWalListener(
 	log *slog.Logger,
 	repo repository,
 	repl replication,
-	publ eventPublisher,
+	pub eventPublisher,
 	parser parser,
 	monitor monitor,
 ) *Listener {
@@ -81,7 +81,7 @@ func NewWalListener(
 		monitor:    monitor,
 		slotName:   cfg.Listener.SlotName,
 		cfg:        cfg,
-		publisher:  publ,
+		publisher:  pub,
 		repository: repo,
 		replicator: repl,
 		parser:     parser,
@@ -145,7 +145,7 @@ ProcessLoop:
 			}
 		case err := <-l.errChannel:
 			if errors.As(err, &svcErr) {
-				return err
+				return svcErr
 			}
 
 			logger.Error("listener: received error", "err", err)
@@ -210,23 +210,23 @@ func (l *Listener) Stream(ctx context.Context) {
 
 	for {
 		if err := ctx.Err(); err != nil {
-			l.errChannel <- newListenerError("stream: context canceled", err)
+			l.errChannel <- fmt.Errorf("stream: context canceled: %w", err)
 			break
 		}
 
 		msg, err := l.replicator.WaitForReplicationMessage(ctx)
 		if err != nil {
-			l.errChannel <- newListenerError("WaitForReplicationMessage", err)
+			l.errChannel <- newListenerError("stream: wait for replication message", err)
 			continue
 		}
 
 		if msg != nil {
 			if msg.WalMessage != nil {
-				l.log.Debug("receive wal message", slog.Uint64("wal", msg.WalMessage.WalStart))
+				l.log.Debug("receive WAL message", slog.Uint64("wal", msg.WalMessage.WalStart))
 
 				if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
 					l.log.Error("message parse failed", "err", err)
-					l.errChannel <- fmt.Errorf("parse wal message: %w", err)
+					l.errChannel <- fmt.Errorf("parse WAL message: %w", err)
 
 					continue
 				}
@@ -258,11 +258,11 @@ func (l *Listener) Stream(ctx context.Context) {
 
 				if msg.WalMessage.WalStart > l.readLSN() {
 					if err = l.AckWalMessage(msg.WalMessage.WalStart); err != nil {
-						l.errChannel <- fmt.Errorf("acknowledge wal message: %w", err)
+						l.errChannel <- fmt.Errorf("acknowledge WAL message: %w", err)
 						continue
 					}
 
-					l.log.Debug("ack wal msg", slog.Uint64("lsn", l.readLSN()))
+					l.log.Debug("ack WAL msg", slog.Uint64("lsn", l.readLSN()))
 				}
 			}
 

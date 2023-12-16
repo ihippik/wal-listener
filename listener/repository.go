@@ -2,6 +2,7 @@ package listener
 
 import (
 	"errors"
+
 	"github.com/jackc/pgx"
 )
 
