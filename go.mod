@@ -16,6 +16,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/urfave/cli/v2 v2.26.0
 	github.com/wagslane/go-rabbitmq v0.12.4
+	golang.org/x/sync v0.6.0
 )
 
 require (
