@@ -76,6 +76,23 @@ func factoryPublisher(cfg *config.PublisherCfg, logger *slog.Logger) (eventPubli
 		}
 
 		return pub, nil
+	case config.PublisherTypeRabbitMQ:
+		conn, err := publisher.NewConnection(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("new connection: %w", err)
+		}
+
+		p, err := publisher.NewPublisher(cfg.Topic, conn)
+		if err != nil {
+			return nil, fmt.Errorf("new publisher: %w", err)
+		}
+
+		pub, err := publisher.NewRabbitPublisher(conn, p)
+		if err != nil {
+			return nil, fmt.Errorf("new rabbit publisher: %w", err)
+		}
+
+		return pub, nil
 	default:
 		return nil, fmt.Errorf("unknown publisher type: %s", cfg.Type)
 	}

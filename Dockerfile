@@ -1,10 +1,13 @@
-FROM golang:1.21 AS build-env
+FROM golang:1.21-alpine AS build-env
 LABEL maintainer="Konstantin Makarov <hippik80@gmail.com>"
 
-ADD . /listener
 WORKDIR /listener
+COPY go.mod go.sum ./
+RUN go mod download
 
-RUN go build -buildmode=pie -trimpath -ldflags='-s -w -buildid' -o app ./cmd/wal-listener
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o app ./cmd/wal-listener
 
 FROM cgr.dev/chainguard/busybox:latest-glibc
 
@@ -12,4 +15,4 @@ WORKDIR /app/
 
 COPY --from=build-env /listener/app /app/
 
-CMD ./app
+CMD /app/wal-listener
