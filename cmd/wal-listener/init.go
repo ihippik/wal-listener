@@ -87,7 +87,7 @@ func factoryPublisher(cfg *config.PublisherCfg, logger *slog.Logger) (eventPubli
 			return nil, fmt.Errorf("new publisher: %w", err)
 		}
 
-		pub, err := publisher.NewRabbitPublisher(conn, p)
+		pub, err := publisher.NewRabbitPublisher(cfg.Topic, conn, p)
 		if err != nil {
 			return nil, fmt.Errorf("new rabbit publisher: %w", err)
 		}

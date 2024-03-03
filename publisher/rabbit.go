@@ -8,12 +8,14 @@ import (
 )
 
 type RabbitPublisher struct {
+	pt        string
 	conn      *rabbitmq.Conn
 	publisher *rabbitmq.Publisher
 }
 
-func NewRabbitPublisher(conn *rabbitmq.Conn, publisher *rabbitmq.Publisher) (*RabbitPublisher, error) {
+func NewRabbitPublisher(pubTopic string, conn *rabbitmq.Conn, publisher *rabbitmq.Publisher) (*RabbitPublisher, error) {
 	return &RabbitPublisher{
+		pubTopic,
 		conn,
 		publisher,
 	}, nil
@@ -29,9 +31,9 @@ func (p *RabbitPublisher) Publish(topic string, event Event) error {
 	return p.publisher.PublishWithContext(
 		context.TODO(),
 		body,
-		[]string{""},
+		[]string{topic},
 		rabbitmq.WithPublishOptionsContentType("application/json"),
-		rabbitmq.WithPublishOptionsExchange(topic),
+		rabbitmq.WithPublishOptionsExchange(p.pt),
 	)
 }
 
@@ -61,7 +63,7 @@ func NewPublisher(topic string, conn *rabbitmq.Conn) (*rabbitmq.Publisher, error
 		rabbitmq.WithPublisherOptionsLogging,
 		rabbitmq.WithPublisherOptionsExchangeName(topic),
 		rabbitmq.WithPublisherOptionsExchangeDeclare,
-		rabbitmq.WithPublisherOptionsExchangeKind("fanout"),
+		rabbitmq.WithPublisherOptionsExchangeKind("topic"),
 		rabbitmq.WithPublisherOptionsExchangeDurable,
 	)
 
