@@ -75,6 +75,7 @@ services:
     container_name: wal
     build:
         context: .
+        target: prod
         dockerfile: Dockerfile
     volumes:
         - ./certs:/certs
