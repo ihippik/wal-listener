@@ -13,8 +13,9 @@ import (
 type PublisherType string
 
 const (
-	PublisherTypeNats  PublisherType = "nats"
-	PublisherTypeKafka PublisherType = "kafka"
+	PublisherTypeNats     PublisherType = "nats"
+	PublisherTypeKafka    PublisherType = "kafka"
+	PublisherTypeRabbitMQ PublisherType = "rabbitmq"
 )
 
 // Config for wal-listener.

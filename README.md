@@ -25,7 +25,9 @@ Then we filter out only the events we need and publish them in the queue
 ### Event publishing
 
 As the message broker will be used is of your choice:
-NATS JetStream [`type=nats`] or Apache Kafka [`type=kafka`].
+- NATS JetStream [`type=nats`];
+- Apache Kafka [`type=kafka`];
+- RabbitMQ [`type=rabbitmq`].
 
 Service publishes the following structure.
 The name of the topic for subscription to receive messages is formed from the prefix of the topic,

@@ -1,0 +1,10 @@
+.github
+.idea
+*.md
+*.txt
+*.log
+*.png
+scripts
+certs
+Dockerfile
+docker-compose.yml

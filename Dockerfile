@@ -1,15 +1,24 @@
-FROM golang:1.21 AS build-env
+# Dependencies Stage
+FROM golang:1.21-alpine AS base
 LABEL maintainer="Konstantin Makarov <hippik80@gmail.com>"
 
-ADD . /listener
 WORKDIR /listener
+COPY go.mod go.sum ./
+RUN go mod download
 
-RUN go build -buildmode=pie -trimpath -ldflags='-s -w -buildid' -o app ./cmd/wal-listener
+# Build Stage
+FROM base AS build
 
-FROM cgr.dev/chainguard/busybox:latest-glibc
+WORKDIR /listener
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o app ./cmd/wal-listener
+
+# Final Stage
+FROM cgr.dev/chainguard/busybox:latest-glibc as prod
 
 WORKDIR /app/
 
-COPY --from=build-env /listener/app /app/
+COPY --from=build /listener/app /app/
 
-CMD ./app
+CMD /app/app
