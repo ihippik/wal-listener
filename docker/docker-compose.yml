@@ -74,9 +74,9 @@ services:
   wal:
     container_name: wal
     build:
-        context: .
+        context: ../.
         target: prod
-        dockerfile: Dockerfile
+        dockerfile: ./Dockerfile
     volumes:
         - ./certs:/certs
         - ./config.yml:/app/config.yml

@@ -433,7 +433,7 @@ func TestListener_Stream(t *testing.T) {
 	}
 
 	setPublish := func(subject string, want publisher.Event, err error) {
-		publ.On("Publish", subject, mock.MatchedBy(func(got publisher.Event) bool {
+		publ.On("Publish", mock.Anything, subject, mock.MatchedBy(func(got publisher.Event) bool {
 			ok := want.Action == got.Action &&
 				reflect.DeepEqual(want.Data, got.Data) &&
 				want.ID == got.ID &&

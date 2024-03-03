@@ -29,11 +29,7 @@ func (e *Event) SubjectName(cfg *config.Config) string {
 		}
 	}
 
-	topic = cfg.Publisher.Topic
-
-	if len(cfg.Publisher.TopicPrefix) > 0 || len(topic) > 0 {
-		topic += "." + cfg.Publisher.TopicPrefix + topic
-	}
+	topic = cfg.Publisher.Topic + "." + cfg.Publisher.TopicPrefix + topic
 
 	return topic
 }
