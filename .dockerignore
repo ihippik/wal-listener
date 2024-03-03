@@ -4,7 +4,6 @@
 *.txt
 *.log
 *.png
-scripts
+docker
 certs
 Dockerfile
-docker-compose.yml

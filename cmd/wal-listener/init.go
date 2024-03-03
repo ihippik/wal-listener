@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 
@@ -46,7 +47,7 @@ func (l pgxLogger) Log(_ pgx.LogLevel, msg string, _ map[string]any) {
 }
 
 type eventPublisher interface {
-	Publish(string, publisher.Event) error
+	Publish(context.Context, string, publisher.Event) error
 	Close() error
 }
 

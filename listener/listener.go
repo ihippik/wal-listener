@@ -22,7 +22,7 @@ const errorBufferSize = 100
 const pgOutputPlugin = "pgoutput"
 
 type eventPublisher interface {
-	Publish(string, publisher.Event) error
+	Publish(context.Context, string, publisher.Event) error
 }
 
 type parser interface {
@@ -237,7 +237,7 @@ func (l *Listener) Stream(ctx context.Context) {
 					for _, event := range natsEvents {
 						subjectName := event.SubjectName(l.cfg)
 
-						if err = l.publisher.Publish(subjectName, event); err != nil {
+						if err = l.publisher.Publish(ctx, subjectName, event); err != nil {
 							l.errChannel <- fmt.Errorf("publish message: %w", err)
 							continue
 						}

@@ -13,9 +13,11 @@ func TestEvent_GetSubjectName(t *testing.T) {
 		Action string
 		Data   map[string]any
 	}
+
 	type args struct {
 		cfg *config.Config
 	}
+
 	tests := []struct {
 		name   string
 		fields fields
@@ -41,6 +43,7 @@ func TestEvent_GetSubjectName(t *testing.T) {
 			want: "STREAM.prefix_public_users",
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			e := &Event{
@@ -49,6 +52,7 @@ func TestEvent_GetSubjectName(t *testing.T) {
 				Action: tt.fields.Action,
 				Data:   tt.fields.Data,
 			}
+
 			if got := e.SubjectName(tt.args.cfg); got != tt.want {
 				t.Errorf("SubjectName() = %v, want %v", got, tt.want)
 			}
