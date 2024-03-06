@@ -13,9 +13,10 @@ import (
 type PublisherType string
 
 const (
-	PublisherTypeNats     PublisherType = "nats"
-	PublisherTypeKafka    PublisherType = "kafka"
-	PublisherTypeRabbitMQ PublisherType = "rabbitmq"
+	PublisherTypeNats         PublisherType = "nats"
+	PublisherTypeKafka        PublisherType = "kafka"
+	PublisherTypeRabbitMQ     PublisherType = "rabbitmq"
+	PublisherTypeGooglePubSub PublisherType = "googlepubsub"
 )
 
 // Config for wal-listener.
@@ -39,14 +40,15 @@ type ListenerCfg struct {
 
 // PublisherCfg represent configuration for any types publisher.
 type PublisherCfg struct {
-	Type        PublisherType `valid:"required"`
-	Address     string        `valid:"required"`
-	Topic       string        `valid:"required"`
-	TopicPrefix string
-	EnableTLS   bool   `json:"enable_tls"`
-	ClientCert  string `json:"client_cert"`
-	ClientKey   string `json:"client_key"`
-	CACert      string `json:"ca_cert"`
+	Type            PublisherType `valid:"required"`
+	Address         string
+	Topic           string `valid:"required"`
+	TopicPrefix     string
+	EnableTLS       bool   `json:"enable_tls"`
+	ClientCert      string `json:"client_cert"`
+	ClientKey       string `json:"client_key"`
+	CACert          string `json:"ca_cert"`
+	PubSubProjectID string
 }
 
 // DatabaseCfg path of the PostgreSQL DB config.

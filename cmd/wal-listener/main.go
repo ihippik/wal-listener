@@ -57,7 +57,7 @@ func main() {
 				return fmt.Errorf("pgx connection: %w", err)
 			}
 
-			pub, err := factoryPublisher(cfg.Publisher, logger)
+			pub, err := factoryPublisher(c.Context, cfg.Publisher, logger)
 			if err != nil {
 				return fmt.Errorf("factory publisher: %w", err)
 			}
