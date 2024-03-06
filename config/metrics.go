@@ -53,7 +53,7 @@ func (m Metrics) IncFilterSkippedEvents(table string) {
 	m.filterSkippedEvents.With(prometheus.Labels{labelApp: appName, labelTable: table}).Inc()
 }
 
-// IncProblematicEvents increment skipped by filter events counter.
+// IncProblematicEvents increment number of issues at the time of event processing.
 func (m Metrics) IncProblematicEvents(kind string) {
 	m.problematicEvents.With(prometheus.Labels{labelApp: appName, labelKind: kind}).Inc()
 }

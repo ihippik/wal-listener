@@ -132,10 +132,11 @@ If you specify an DSN-string for the [Sentry](https://sentry.io/) project, the n
 You can take metrics by specifying an endpoint for Prometheus in the configuration.
 #### Available metrics
 
-| name                        | description                          | fields             |
-|-----------------------------|--------------------------------------|--------------------|
-| published_events_total      | the total number of published events | `subject`, `table` |
-| filter_skipped_events_total | the total number of skipped events   | `table`            |
+| name                        | description                                    | fields             |
+|-----------------------------|------------------------------------------------|--------------------|
+| published_events_total      | the total number of published events           | `subject`, `table` |
+| filter_skipped_events_total | the total number of skipped events             | `table`            |
+| problematic_events_total    | the total number of skipped problematic events | `kind`             |
 
 
 ## Docker
