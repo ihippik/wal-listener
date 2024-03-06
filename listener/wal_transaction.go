@@ -8,6 +8,7 @@ import (
 
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
+
 	"github.com/ihippik/wal-listener/v2/publisher"
 )
 

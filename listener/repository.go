@@ -2,6 +2,7 @@ package listener
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx"
 )
@@ -32,9 +33,16 @@ func (r RepositoryImpl) GetSlotLSN(slotName string) (string, error) {
 
 // CreatePublication create publication fo all.
 func (r RepositoryImpl) CreatePublication(name string) error {
-	_, err := r.conn.Exec(`CREATE PUBLICATION "` + name + `" FOR ALL TABLES`)
+	if _, err := r.conn.Exec(`CREATE PUBLICATION "` + name + `" FOR ALL TABLES`); err != nil {
+		return fmt.Errorf("exec: %w", err)
+	}
 
-	return err
+	return nil
+}
+
+// IsAlive check database connection problems.
+func (r RepositoryImpl) NewStandbyStatus(walPositions ...uint64) (status *pgx.StandbyStatus, err error) {
+	return pgx.NewStandbyStatus(walPositions...)
 }
 
 // IsAlive check database connection problems.

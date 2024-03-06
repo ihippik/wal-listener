@@ -11,16 +11,3 @@ var (
 	errUnknownMessageType   = errors.New("unknown message type")
 	errRelationNotFound     = errors.New("relation not found")
 )
-
-type serviceErr struct {
-	Caller string
-	Err    error
-}
-
-func newListenerError(caller string, err error) *serviceErr {
-	return &serviceErr{Caller: caller, Err: err}
-}
-
-func (e *serviceErr) Error() string {
-	return e.Caller + ": " + e.Err.Error()
-}

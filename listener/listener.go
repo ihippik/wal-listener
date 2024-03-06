@@ -2,7 +2,6 @@ package listener
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,12 +10,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ihippik/wal-listener/v2/config"
 	"github.com/ihippik/wal-listener/v2/publisher"
 )
-
-const errorBufferSize = 100
 
 // Logical decoding plugin.
 const pgOutputPlugin = "pgoutput"
@@ -42,6 +40,7 @@ type replication interface {
 type repository interface {
 	CreatePublication(name string) error
 	GetSlotLSN(slotName string) (string, error)
+	NewStandbyStatus(walPositions ...uint64) (status *pgx.StandbyStatus, err error)
 	IsAlive() bool
 	Close() error
 }
@@ -49,6 +48,7 @@ type repository interface {
 type monitor interface {
 	IncPublishedEvents(subject, table string)
 	IncFilterSkippedEvents(table string)
+	IncProblematicEvents(kind string)
 }
 
 // Listener main service struct.
@@ -57,13 +57,11 @@ type Listener struct {
 	log        *slog.Logger
 	monitor    monitor
 	mu         sync.RWMutex
-	slotName   string
 	publisher  eventPublisher
 	replicator replication
 	repository repository
 	parser     parser
 	lsn        uint64
-	errChannel chan error
 }
 
 // NewWalListener create and initialize new service instance.
@@ -79,19 +77,17 @@ func NewWalListener(
 	return &Listener{
 		log:        log,
 		monitor:    monitor,
-		slotName:   cfg.Listener.SlotName,
 		cfg:        cfg,
 		publisher:  pub,
 		repository: repo,
 		replicator: repl,
 		parser:     parser,
-		errChannel: make(chan error, errorBufferSize),
 	}
 }
 
 // Process is main service entry point.
 func (l *Listener) Process(ctx context.Context) error {
-	logger := l.log.With("slot_name", l.slotName)
+	logger := l.log.With("slot_name", l.cfg.Listener.SlotName)
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
@@ -108,7 +104,7 @@ func (l *Listener) Process(ctx context.Context) error {
 	}
 
 	if !slotIsExists {
-		consistentPoint, _, err := l.replicator.CreateReplicationSlotEx(l.slotName, pgOutputPlugin)
+		consistentPoint, _, err := l.replicator.CreateReplicationSlotEx(l.cfg.Listener.SlotName, pgOutputPlugin)
 		if err != nil {
 			return fmt.Errorf("create replication slot: %w", err)
 		}
@@ -120,19 +116,32 @@ func (l *Listener) Process(ctx context.Context) error {
 
 		l.setLSN(lsn)
 
-		logger.Info("new slot was created", slog.String("slot", l.slotName))
+		logger.Info("new slot was created", slog.String("slot", l.cfg.Listener.SlotName))
 	} else {
 		logger.Info("slot already exists, LSN updated")
 	}
 
-	go l.Stream(ctx)
+	group := new(errgroup.Group)
 
+	group.Go(func() error {
+		return l.Stream(ctx)
+	})
+	group.Go(func() error {
+		return l.checkConnection(ctx)
+	})
+
+	if err = group.Wait(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// checkConnection periodically checks connections.
+func (l *Listener) checkConnection(ctx context.Context) error {
 	refresh := time.NewTicker(l.cfg.Listener.RefreshConnection)
 	defer refresh.Stop()
 
-	var svcErr *serviceErr
-
-ProcessLoop:
 	for {
 		select {
 		case <-refresh.C:
@@ -143,35 +152,27 @@ ProcessLoop:
 			if !l.repository.IsAlive() {
 				return fmt.Errorf("repository: %w", errConnectionIsLost)
 			}
-		case err := <-l.errChannel:
-			if errors.As(err, &svcErr) {
-				return svcErr
-			}
-
-			logger.Error("listener: received error", "err", err)
 		case <-ctx.Done():
-			logger.Debug("listener: context was canceled")
+			l.log.Debug("cgeck connection: context was canceled")
 
 			if err := l.Stop(); err != nil {
-				logger.Error("listener: stop error", "err", err)
+				l.log.Error("failed to stop service", "err", err)
 			}
 
-			break ProcessLoop
+			return nil
 		}
 	}
-
-	return nil
 }
 
 // slotIsExists checks whether a slot has already been created and if it has been created uses it.
 func (l *Listener) slotIsExists() (bool, error) {
-	restartLSNStr, err := l.repository.GetSlotLSN(l.slotName)
+	restartLSNStr, err := l.repository.GetSlotLSN(l.cfg.Listener.SlotName)
 	if err != nil {
 		return false, fmt.Errorf("get slot lsn: %w", err)
 	}
 
 	if len(restartLSNStr) == 0 {
-		l.log.Warn("restart LSN not found", slog.String("slot_name", l.slotName))
+		l.log.Warn("restart LSN not found", slog.String("slot_name", l.cfg.Listener.SlotName))
 		return false, nil
 	}
 
@@ -190,18 +191,23 @@ const (
 	publicationName = "wal-listener"
 )
 
+const (
+	problemKindParse   = "parse"
+	problemKindPublish = "publish"
+	problemKindAck     = "ack"
+)
+
 // Stream receive event from PostgreSQL.
 // Accept message, apply filter and  publish it in NATS server.
-func (l *Listener) Stream(ctx context.Context) {
+func (l *Listener) Stream(ctx context.Context) error {
 	if err := l.replicator.StartReplication(
-		l.slotName,
+		l.cfg.Listener.SlotName,
 		l.readLSN(),
 		-1,
 		protoVersion,
 		publicationNames(publicationName),
 	); err != nil {
-		l.errChannel <- newListenerError("StartReplication()", err)
-		return
+		return fmt.Errorf("start replication: %w", err)
 	}
 
 	go l.SendPeriodicHeartbeats(ctx)
@@ -210,77 +216,92 @@ func (l *Listener) Stream(ctx context.Context) {
 
 	for {
 		if err := ctx.Err(); err != nil {
-			l.errChannel <- fmt.Errorf("stream: context canceled: %w", err)
-			break
+			l.log.Warn("stream: context canceled", "err", err)
+			return nil
 		}
 
 		msg, err := l.replicator.WaitForReplicationMessage(ctx)
 		if err != nil {
-			l.errChannel <- newListenerError("stream: wait for replication message", err)
+			return fmt.Errorf("wait for replication message: %w", err)
+		}
+
+		if msg == nil {
+			l.log.Debug("got empty message")
 			continue
 		}
 
-		if msg != nil {
-			if msg.WalMessage != nil {
-				l.log.Debug("receive WAL message", slog.Uint64("wal", msg.WalMessage.WalStart))
+		if err = l.processMessage(ctx, msg, tx); err != nil {
+			return fmt.Errorf("process message: %w", err)
+		}
 
-				if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
-					l.log.Error("message parse failed", "err", err)
-					l.errChannel <- fmt.Errorf("parse WAL message: %w", err)
+		l.processHeartBeat(msg)
+	}
+}
 
-					continue
-				}
+func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessage, tx *WalTransaction) error {
+	if msg.WalMessage == nil {
+		l.log.Debug("empty wal-message")
+		return nil
+	}
 
-				if tx.CommitTime != nil {
-					natsEvents := tx.CreateEventsWithFilter(l.cfg.Listener.Filter.Tables)
+	l.log.Debug("WAL message has been received", slog.Uint64("wal", msg.WalMessage.WalStart))
 
-					for _, event := range natsEvents {
-						subjectName := event.SubjectName(l.cfg)
+	if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
+		l.monitor.IncProblematicEvents(problemKindParse)
+		return fmt.Errorf("parse: %w", err)
+	}
 
-						if err = l.publisher.Publish(ctx, subjectName, event); err != nil {
-							l.errChannel <- fmt.Errorf("publish message: %w", err)
-							continue
-						}
+	if tx.CommitTime != nil {
+		for _, event := range tx.CreateEventsWithFilter(l.cfg.Listener.Filter.Tables) {
+			subjectName := event.SubjectName(l.cfg)
 
-						l.monitor.IncPublishedEvents(subjectName, event.Table)
-
-						l.log.Info(
-							"event was sent",
-							slog.String("subject", subjectName),
-							slog.String("action", event.Action),
-							slog.String("table", event.Table),
-							slog.Uint64("lsn", l.readLSN()),
-						)
-					}
-
-					tx.Clear()
-				}
-
-				if msg.WalMessage.WalStart > l.readLSN() {
-					if err = l.AckWalMessage(msg.WalMessage.WalStart); err != nil {
-						l.errChannel <- fmt.Errorf("acknowledge WAL message: %w", err)
-						continue
-					}
-
-					l.log.Debug("ack WAL msg", slog.Uint64("lsn", l.readLSN()))
-				}
+			if err := l.publisher.Publish(ctx, subjectName, event); err != nil {
+				l.monitor.IncProblematicEvents(problemKindPublish)
+				return fmt.Errorf("publish: %w", err)
 			}
 
-			if msg.ServerHeartbeat != nil {
-				l.log.Debug(
-					"received server heartbeat",
-					slog.Uint64("server_wal_end", msg.ServerHeartbeat.ServerWalEnd),
-					slog.Uint64("server_time", msg.ServerHeartbeat.ServerTime),
-				)
+			l.monitor.IncPublishedEvents(subjectName, event.Table)
 
-				if msg.ServerHeartbeat.ReplyRequested == 1 {
-					l.log.Debug("status requested")
+			l.log.Info(
+				"event was sent",
+				slog.String("subject", subjectName),
+				slog.String("action", event.Action),
+				slog.String("table", event.Table),
+				slog.Uint64("lsn", l.readLSN()),
+			)
+		}
 
-					if err = l.SendStandbyStatus(); err != nil {
-						l.errChannel <- fmt.Errorf("send standby status: %w", err)
-					}
-				}
-			}
+		tx.Clear()
+	}
+
+	if msg.WalMessage.WalStart > l.readLSN() {
+		if err := l.AckWalMessage(msg.WalMessage.WalStart); err != nil {
+			l.monitor.IncProblematicEvents(problemKindAck)
+			return fmt.Errorf("ack: %w", err)
+		}
+
+		l.log.Debug("ack WAL message", slog.Uint64("lsn", l.readLSN()))
+	}
+
+	return nil
+}
+
+func (l *Listener) processHeartBeat(msg *pgx.ReplicationMessage) {
+	if msg.ServerHeartbeat == nil {
+		return
+	}
+
+	l.log.Debug(
+		"received server heartbeat",
+		slog.Uint64("server_wal_end", msg.ServerHeartbeat.ServerWalEnd),
+		slog.Uint64("server_time", msg.ServerHeartbeat.ServerTime),
+	)
+
+	if msg.ServerHeartbeat.ReplyRequested == 1 {
+		l.log.Debug("status requested")
+
+		if err := l.SendStandbyStatus(); err != nil {
+			l.log.Warn("send standby status: %w", err)
 		}
 	}
 }
@@ -316,18 +337,20 @@ func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 			return
 		case <-heart.C:
 			if err := l.SendStandbyStatus(); err != nil {
-				l.log.Error("failed to send status heartbeat", "err", err)
+				l.log.Error("failed to send heartbeat status", "err", err)
 				continue
 			}
 
-			l.log.Debug("sending periodic status heartbeat")
+			l.log.Debug("sending periodic heartbeat status")
 		}
 	}
 }
 
 // SendStandbyStatus sends a `StandbyStatus` object with the current RestartLSN value to the server.
 func (l *Listener) SendStandbyStatus() error {
-	standbyStatus, err := pgx.NewStandbyStatus(l.readLSN())
+	lsn := l.readLSN()
+
+	standbyStatus, err := l.repository.NewStandbyStatus(lsn)
 	if err != nil {
 		return fmt.Errorf("unable to create StandbyStatus object: %w", err)
 	}
