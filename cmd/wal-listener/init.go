@@ -100,8 +100,7 @@ func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slo
 			return nil, fmt.Errorf("could not create pubsub connection: %w", err)
 		}
 
-		pubSubPublisher := publisher.NewGooglePubSubPublisher(pubSubConn)
-		return pubSubPublisher, nil
+		return publisher.NewGooglePubSubPublisher(pubSubConn), nil
 	default:
 		return nil, fmt.Errorf("unknown publisher type: %s", cfg.Type)
 	}

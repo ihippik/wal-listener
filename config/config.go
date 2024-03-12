@@ -16,7 +16,7 @@ const (
 	PublisherTypeNats         PublisherType = "nats"
 	PublisherTypeKafka        PublisherType = "kafka"
 	PublisherTypeRabbitMQ     PublisherType = "rabbitmq"
-	PublisherTypeGooglePubSub PublisherType = "googlepubsub"
+	PublisherTypeGooglePubSub PublisherType = "google_pubsub"
 )
 
 // Config for wal-listener.
@@ -48,7 +48,7 @@ type PublisherCfg struct {
 	ClientCert      string `json:"client_cert"`
 	ClientKey       string `json:"client_key"`
 	CACert          string `json:"ca_cert"`
-	PubSubProjectID string
+	PubSubProjectID string `json:"pubsub_project_id"`
 }
 
 // DatabaseCfg path of the PostgreSQL DB config.

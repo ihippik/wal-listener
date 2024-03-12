@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// PubSubConnection represent Pub/Sub connection.
 type PubSubConnection struct {
 	logger    *slog.Logger
 	client    *pubsub.Client
@@ -19,27 +20,29 @@ type PubSubConnection struct {
 	mu        sync.RWMutex
 }
 
-func NewPubSubConnection(ctx context.Context, logger *slog.Logger, pubSubProjectId string) (*PubSubConnection, error) {
-	if pubSubProjectId == "" {
+// NewPubSubConnection create new connection with specified project id.
+func NewPubSubConnection(ctx context.Context, logger *slog.Logger, pubSubProjectID string) (*PubSubConnection, error) {
+	if pubSubProjectID == "" {
 		return nil, fmt.Errorf("project id is required for pub sub connection")
 	}
 
-	c, err := pubsub.NewClient(ctx, pubSubProjectId)
+	cli, err := pubsub.NewClient(ctx, pubSubProjectID)
 	if err != nil {
 		return nil, err
 	}
+
 	return &PubSubConnection{
 		logger:    logger,
-		client:    c,
-		projectID: pubSubProjectId,
+		client:    cli,
+		projectID: pubSubProjectID,
 		topics:    make(map[string]*pubsub.Topic),
-		mu:        sync.RWMutex{},
 	}, nil
 }
 
 func (c *PubSubConnection) getTopic(topic string) *pubsub.Topic {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	if top, ok := c.topics[topic]; ok {
 		return top
 	}
@@ -48,6 +51,7 @@ func (c *PubSubConnection) getTopic(topic string) *pubsub.Topic {
 	t.PublishSettings.NumGoroutines = 1
 	t.PublishSettings.CountThreshold = 1
 	c.topics[topic] = t
+
 	return t
 }
 
@@ -56,19 +60,19 @@ func (c *PubSubConnection) Publish(ctx context.Context, topic string, data []byt
 	defer t.Flush()
 
 	var res *pubsub.PublishResult
-	var err error
+
 	res = t.Publish(ctx, &pubsub.Message{
 		Data: data,
 	})
 
-	_, err = res.Get(ctx)
-	if err != nil {
+	if _, err := res.Get(ctx); err != nil {
 		c.logger.Error("Failed to publish message", "err", err)
+
 		if status.Code(err) == codes.NotFound {
 			return fmt.Errorf("topic not found %w", err)
-		} else {
-			return err
 		}
+
+		return fmt.Errorf("get: %w", err)
 	}
 
 	return nil

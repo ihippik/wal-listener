@@ -28,6 +28,7 @@ As the message broker will be used is of your choice:
 - NATS JetStream [`type=nats`];
 - Apache Kafka [`type=kafka`];
 - RabbitMQ [`type=rabbitmq`].
+- Google Pub/Sub [`type=google_pubsub`].
 
 Service publishes the following structure.
 The name of the topic for subscription to receive messages is formed from the prefix of the topic,
