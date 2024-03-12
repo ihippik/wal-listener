@@ -52,7 +52,7 @@ type eventPublisher interface {
 }
 
 // factoryPublisher represents a factory function for creating a eventPublisher.
-func factoryPublisher(cfg *config.PublisherCfg, logger *slog.Logger) (eventPublisher, error) {
+func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slog.Logger) (eventPublisher, error) {
 	switch cfg.Type {
 	case config.PublisherTypeKafka:
 		producer, err := publisher.NewProducer(cfg)
@@ -94,6 +94,14 @@ func factoryPublisher(cfg *config.PublisherCfg, logger *slog.Logger) (eventPubli
 		}
 
 		return pub, nil
+	case config.PublisherTypeGooglePubSub:
+		pubSubConn, err := publisher.NewPubSubConnection(ctx, logger, cfg.PubSubProjectID)
+		if err != nil {
+			return nil, fmt.Errorf("could not create pubsub connection: %w", err)
+		}
+
+		pubSubPublisher := publisher.NewGooglePubSubPublisher(pubSubConn)
+		return pubSubPublisher, nil
 	default:
 		return nil, fmt.Errorf("unknown publisher type: %s", cfg.Type)
 	}
