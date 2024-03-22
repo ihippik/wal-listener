@@ -20,7 +20,7 @@ import (
 const pgOutputPlugin = "pgoutput"
 
 type eventPublisher interface {
-	Publish(context.Context, string, publisher.Event) error
+	Publish(context.Context, string, *publisher.Event) error
 }
 
 type parser interface {
@@ -212,7 +212,13 @@ func (l *Listener) Stream(ctx context.Context) error {
 
 	go l.SendPeriodicHeartbeats(ctx)
 
-	tx := NewWalTransaction(l.log, l.monitor)
+	pool := &sync.Pool{
+		New: func() any {
+			return &publisher.Event{}
+		},
+	}
+
+	tx := NewWalTransaction(l.log, pool, l.monitor)
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -252,7 +258,7 @@ func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessa
 	}
 
 	if tx.CommitTime != nil {
-		for _, event := range tx.CreateEventsWithFilter(l.cfg.Listener.Filter.Tables) {
+		for event := range tx.CreateEventsWithFilter(ctx, l.cfg.Listener.Filter.Tables) {
 			subjectName := event.SubjectName(l.cfg)
 
 			if err := l.publisher.Publish(ctx, subjectName, event); err != nil {
@@ -269,6 +275,8 @@ func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessa
 				slog.String("table", event.Table),
 				slog.Uint64("lsn", l.readLSN()),
 			)
+
+			tx.pool.Put(event)
 		}
 
 		tx.Clear()

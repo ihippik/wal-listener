@@ -124,7 +124,7 @@ func TestConfig_Validate(t *testing.T) {
 					TopicPrefix: "prefix",
 				},
 			},
-			wantErr: errors.New("Publisher.Address: non zero value required;Publisher.Type: non zero value required"),
+			wantErr: errors.New("Publisher.Type: non zero value required"),
 		},
 	}
 

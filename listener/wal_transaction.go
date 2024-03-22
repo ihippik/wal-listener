@@ -1,9 +1,11 @@
 package listener
 
 import (
+	"context"
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -35,14 +37,19 @@ type WalTransaction struct {
 	CommitTime    *time.Time
 	RelationStore map[int32]RelationData
 	Actions       []ActionData
+	pool          *sync.Pool
 }
 
 // NewWalTransaction create and initialize new WAL transaction.
-func NewWalTransaction(log *slog.Logger, monitor transactionMonitor) *WalTransaction {
+func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor) *WalTransaction {
+	const aproxData = 300
+
 	return &WalTransaction{
+		pool:          pool,
 		log:           log,
 		monitor:       monitor,
 		RelationStore: make(map[int32]RelationData),
+		Actions:       make([]ActionData, 0, aproxData),
 	}
 }
 
@@ -206,51 +213,59 @@ func (w *WalTransaction) CreateActionData(
 
 // CreateEventsWithFilter filter WAL message by table,
 // action and create events for each value.
-func (w *WalTransaction) CreateEventsWithFilter(tableMap map[string][]string) []publisher.Event {
-	var events []publisher.Event
+func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context, tableMap map[string][]string) <-chan *publisher.Event {
+	output := make(chan *publisher.Event)
 
-	for _, item := range w.Actions {
-		dataOld := make(map[string]any, len(item.OldColumns))
+	go func(ctx context.Context) {
+		for _, item := range w.Actions {
+			if err := ctx.Err(); err != nil {
+				w.log.Debug("create events with filter: context canceled")
+				break
+			}
 
-		for _, val := range item.OldColumns {
-			dataOld[val.name] = val.value
+			dataOld := make(map[string]any, len(item.OldColumns))
+
+			for _, val := range item.OldColumns {
+				dataOld[val.name] = val.value
+			}
+
+			data := make(map[string]any, len(item.NewColumns))
+
+			for _, val := range item.NewColumns {
+				data[val.name] = val.value
+			}
+
+			event := w.pool.Get().(*publisher.Event)
+			event.ID = uuid.New()
+			event.Schema = item.Schema
+			event.Table = item.Table
+			event.Action = item.Kind.string()
+			event.Data = data
+			event.DataOld = dataOld
+			event.EventTime = *w.CommitTime
+
+			actions, validTable := tableMap[item.Table]
+
+			validAction := inArray(actions, item.Kind.string())
+			if validTable && validAction {
+				output <- event
+				continue
+			}
+
+			w.monitor.IncFilterSkippedEvents(item.Table)
+
+			w.log.Debug(
+				"wal-message was skipped by filter",
+				slog.String("schema", item.Schema),
+				slog.String("table", item.Table),
+				slog.String("action", string(item.Kind)),
+			)
 		}
 
-		data := make(map[string]any, len(item.NewColumns))
+		close(output)
+	}(ctx)
 
-		for _, val := range item.NewColumns {
-			data[val.name] = val.value
-		}
-
-		event := publisher.Event{
-			ID:        uuid.New(),
-			Schema:    item.Schema,
-			Table:     item.Table,
-			Action:    item.Kind.string(),
-			DataOld:   dataOld,
-			Data:      data,
-			EventTime: *w.CommitTime,
-		}
-
-		actions, validTable := tableMap[item.Table]
-
-		validAction := inArray(actions, item.Kind.string())
-		if validTable && validAction {
-			events = append(events, event)
-			continue
-		}
-
-		w.monitor.IncFilterSkippedEvents(item.Table)
-
-		w.log.Info(
-			"wal-message was skipped by filter",
-			slog.String("schema", item.Schema),
-			slog.String("table", item.Table),
-			slog.String("action", string(item.Kind)),
-		)
-	}
-
-	return events
+	return output
 }
 
 // inArray checks whether the value is in an array.
