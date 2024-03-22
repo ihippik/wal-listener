@@ -90,7 +90,6 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		}
 
 		tx.RelationStore[relation.ID] = rd
-
 	case TypeMsgType:
 		p.log.Debug("type message was received")
 	case InsertMsgType:
