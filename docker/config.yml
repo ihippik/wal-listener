@@ -1,0 +1,43 @@
+listener:
+  slotName: myslot_1
+  refreshConnection: 30s
+  heartbeatInterval: 10s
+  filter:
+    tables:
+      seasons:
+        - insert
+        - update
+  topicsMap:
+    schema_table_name: "notifier"
+logger:
+  level: debug
+  fmt: json
+database:
+  host: localhost
+  port: 5432
+  name: my_db
+  user: postgres
+  password: postgres
+  debug: true
+# publisher:
+#   type: kafka
+#   address: localhost:4222
+#   enable_tls: true # Kafka only
+#   client_cert: "cert.pem" # Kafka only
+#   client_key: "key.pub" # Kafka only
+#   ca_cert: "ca.pem" # Kafka only
+#   topic: "wal_listener"
+#   topicPrefix: ""
+# publisher:
+#   type: rabbitmq
+#   address: amqp://guest:guest@localhost:5672
+#   topic: "wal_listener"
+#   topicPrefix: ""
+publisher:
+   type: nats
+   address: localhost
+   topic: "wal_listener"
+   topicPrefix: ""
+monitoring:
+  sentryDSN: ""
+  promAddr: ":2112"
