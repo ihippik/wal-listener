@@ -25,7 +25,7 @@ type Config struct {
 	Database   *DatabaseCfg  `valid:"required"`
 	Publisher  *PublisherCfg `valid:"required"`
 	Logger     *cfg.Logger   `valid:"required"`
-	Monitoring *cfg.Monitoring
+	Monitoring cfg.Monitoring
 }
 
 // ListenerCfg path of the listener config.
