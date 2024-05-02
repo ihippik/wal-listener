@@ -112,10 +112,13 @@ func (l *Listener) Process(orgCtx context.Context) error {
 	l.stateChangedCond = sync.NewCond(&l.stateLock)
 
 	group := new(errgroup.Group)
-	group.Go(func() error {
-		l.healthCheckServer = l.createHealthCheckServer(logger)
-		return l.healthCheckServer.ListenAndServe()
-	})
+	if l.cfg.HealthCheck != nil {
+		group.Go(func() error {
+			logger.Info("Starting health check server")
+			l.healthCheckServer = l.createHealthCheckServer(logger)
+			return l.healthCheckServer.ListenAndServe()
+		})
+	}
 	group.Go(func() error {
 		// Do startup activities asynchronously, so that the app can immediately answer to http health checks
 		// and say that is it alive but not yet ready.
@@ -175,6 +178,11 @@ func (l *Listener) Process(orgCtx context.Context) error {
 
 		cancelCtxFunc()
 
+		if l.healthCheckServer == nil {
+			return nil
+		}
+
+		logger.Info("Shutting down health check server")
 		shutdownCtx, shutdownRelease := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownRelease()
 
@@ -451,7 +459,7 @@ func (l *Listener) setLSN(lsn uint64) {
 }
 
 func (l *Listener) createHealthCheckServer(logger *slog.Logger) *http.Server {
-	healthCheckAddr := ":8080"
+	healthCheckAddr := fmt.Sprintf(":%d", l.cfg.HealthCheck.Port)
 
 	logger.Info("Creating health check http server", "addr", healthCheckAddr)
 

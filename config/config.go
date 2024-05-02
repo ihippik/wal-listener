@@ -21,11 +21,16 @@ const (
 
 // Config for wal-listener.
 type Config struct {
-	Listener   *ListenerCfg  `valid:"required"`
-	Database   *DatabaseCfg  `valid:"required"`
-	Publisher  *PublisherCfg `valid:"required"`
-	Logger     *cfg.Logger   `valid:"required"`
-	Monitoring cfg.Monitoring
+	Listener    *ListenerCfg  `valid:"required"`
+	Database    *DatabaseCfg  `valid:"required"`
+	Publisher   *PublisherCfg `valid:"required"`
+	Logger      *cfg.Logger   `valid:"required"`
+	HealthCheck *HealthCheckCfg
+	Monitoring  cfg.Monitoring
+}
+
+type HealthCheckCfg struct {
+	Port int `valid:"required"`
 }
 
 // ListenerCfg path of the listener config.
