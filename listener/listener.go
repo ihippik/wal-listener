@@ -2,18 +2,20 @@ package listener
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
+	"syscall"
 	"time"
-
-	"github.com/jackc/pgx"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/ihippik/wal-listener/v2/config"
 	"github.com/ihippik/wal-listener/v2/publisher"
+	"github.com/jackc/pgx"
+	"golang.org/x/sync/errgroup"
 )
 
 // Logical decoding plugin.
@@ -51,17 +53,29 @@ type monitor interface {
 	IncProblematicEvents(kind string)
 }
 
+type ListenerState string
+
+const (
+	StateStartingUp   ListenerState = "starting_up"
+	StateReady        ListenerState = "ready"
+	StateShuttingDown ListenerState = "shutting_down"
+)
+
 // Listener main service struct.
 type Listener struct {
-	cfg        *config.Config
-	log        *slog.Logger
-	monitor    monitor
-	mu         sync.RWMutex
-	publisher  eventPublisher
-	replicator replication
-	repository repository
-	parser     parser
-	lsn        uint64
+	cfg               *config.Config
+	log               *slog.Logger
+	monitor           monitor
+	mu                sync.RWMutex
+	publisher         eventPublisher
+	replicator        replication
+	repository        repository
+	parser            parser
+	lsn               uint64
+	state             ListenerState
+	stateLock         sync.Mutex
+	stateChangedCond  *sync.Cond
+	healthCheckServer *http.Server
 }
 
 // NewWalListener create and initialize new service instance.
@@ -82,59 +96,98 @@ func NewWalListener(
 		repository: repo,
 		replicator: repl,
 		parser:     parser,
+		state:      StateStartingUp,
 	}
 }
 
 // Process is main service entry point.
-func (l *Listener) Process(ctx context.Context) error {
+func (l *Listener) Process(orgCtx context.Context) error {
 	logger := l.log.With("slot_name", l.cfg.Listener.SlotName)
 
-	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
-	defer stop()
+	ctx, cancelCtxFunc := context.WithCancel(orgCtx)
 
 	logger.Info("service was started")
 
-	if err := l.repository.CreatePublication(publicationName); err != nil {
-		logger.Warn("publication creation was skipped", "err", err)
-	}
-
-	slotIsExists, err := l.slotIsExists()
-	if err != nil {
-		return fmt.Errorf("slot is exists: %w", err)
-	}
-
-	if !slotIsExists {
-		consistentPoint, _, err := l.replicator.CreateReplicationSlotEx(l.cfg.Listener.SlotName, pgOutputPlugin)
-		if err != nil {
-			return fmt.Errorf("create replication slot: %w", err)
-		}
-
-		lsn, err := pgx.ParseLSN(consistentPoint)
-		if err != nil {
-			return fmt.Errorf("parse lsn: %w", err)
-		}
-
-		l.setLSN(lsn)
-
-		logger.Info("new slot was created", slog.String("slot", l.cfg.Listener.SlotName))
-	} else {
-		logger.Info("slot already exists, LSN updated")
-	}
+	l.stateLock = sync.Mutex{}
+	l.stateChangedCond = sync.NewCond(&l.stateLock)
 
 	group := new(errgroup.Group)
+	group.Go(func() error {
+		l.healthCheckServer = l.createHealthCheckServer(logger)
+		return l.healthCheckServer.ListenAndServe()
+	})
+	group.Go(func() error {
+		// Do startup activities asynchronously, so that the app can immediately answer to http health checks
+		// and say that is it alive but not yet ready.
+
+		if err := l.repository.CreatePublication(publicationName); err != nil {
+			logger.Warn("publication creation was skipped", "err", err)
+		}
+
+		slotExists, err := l.slotExists()
+		if err != nil {
+			return fmt.Errorf("slot exists: %w", err)
+		}
+
+		if !slotExists {
+			consistentPoint, _, err := l.replicator.CreateReplicationSlotEx(l.cfg.Listener.SlotName, pgOutputPlugin)
+			if err != nil {
+				return fmt.Errorf("create replication slot: %w", err)
+			}
+
+			lsn, err := pgx.ParseLSN(consistentPoint)
+			if err != nil {
+				return fmt.Errorf("parse lsn: %w", err)
+			}
+
+			l.setLSN(lsn)
+
+			logger.Info("new slot was created", slog.String("slot", l.cfg.Listener.SlotName))
+		} else {
+			logger.Info("slot already exists, LSN updated")
+		}
+
+		l.changeState(StateReady)
+		logger.Info("Startup activities done, listener is ready.")
+
+		return nil
+	})
 
 	group.Go(func() error {
+		l.waitForState(StateReady)
+		logger.Info("Starting stream")
 		return l.Stream(ctx)
 	})
 	group.Go(func() error {
+		l.waitForState(StateReady)
+		logger.Info("Starting connection checker")
 		return l.checkConnection(ctx)
 	})
+	group.Go(func() error {
+		shutdownCh := make(chan os.Signal, 1)
+		signal.Notify(shutdownCh, syscall.SIGINT, syscall.SIGTERM)
+		<-shutdownCh
 
-	if err = group.Wait(); err != nil {
-		return err
+		signal.Reset()
+
+		logger.Info("Received shutdown signal, listener is shutting down")
+		l.changeState(StateShuttingDown)
+
+		cancelCtxFunc()
+
+		shutdownCtx, shutdownRelease := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownRelease()
+
+		return l.healthCheckServer.Shutdown(shutdownCtx)
+	})
+
+	err := group.Wait()
+	if errors.Is(err, context.Canceled) || errors.Is(err, http.ErrServerClosed) {
+		// This is the expected way for the process to shut down.
+		logger.Info("Listener processes is done")
+		return nil
 	}
-
-	return nil
+	return err
 }
 
 // checkConnection periodically checks connections.
@@ -153,7 +206,7 @@ func (l *Listener) checkConnection(ctx context.Context) error {
 				return fmt.Errorf("repository: %w", errConnectionIsLost)
 			}
 		case <-ctx.Done():
-			l.log.Debug("cgeck connection: context was canceled")
+			l.log.Debug("check connection: context was canceled")
 
 			if err := l.Stop(); err != nil {
 				l.log.Error("failed to stop service", "err", err)
@@ -164,8 +217,8 @@ func (l *Listener) checkConnection(ctx context.Context) error {
 	}
 }
 
-// slotIsExists checks whether a slot has already been created and if it has been created uses it.
-func (l *Listener) slotIsExists() (bool, error) {
+// slotExists checks whether a slot has already been created and if it has been created uses it.
+func (l *Listener) slotExists() (bool, error) {
 	restartLSNStr, err := l.repository.GetSlotLSN(l.cfg.Listener.SlotName)
 	if err != nil {
 		return false, fmt.Errorf("get slot lsn: %w", err)
@@ -395,4 +448,51 @@ func (l *Listener) setLSN(lsn uint64) {
 	defer l.mu.Unlock()
 
 	l.lsn = lsn
+}
+
+func (l *Listener) createHealthCheckServer(logger *slog.Logger) *http.Server {
+	healthCheckAddr := ":8080"
+
+	logger.Info("Creating health check http server", "addr", healthCheckAddr)
+
+	http.HandleFunc("/-/alive", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		fmt.Fprint(w, "OK")
+	})
+	http.HandleFunc("/-/ready", func(w http.ResponseWriter, r *http.Request) {
+		switch l.state {
+		case StateReady:
+			w.WriteHeader(200)
+			fmt.Fprint(w, "OK")
+		case StateStartingUp:
+			w.WriteHeader(http.StatusBadGateway)
+			fmt.Fprint(w, "Starting up")
+		case StateShuttingDown:
+			w.WriteHeader(http.StatusBadGateway)
+			fmt.Fprint(w, "Shutting down")
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, "Unknown listener state")
+		}
+	})
+	return &http.Server{
+		Addr:        healthCheckAddr,
+		Handler:     http.DefaultServeMux,
+		ReadTimeout: time.Second * 5,
+	}
+}
+
+func (l *Listener) changeState(newState ListenerState) {
+	l.stateLock.Lock()
+	defer l.stateLock.Unlock()
+	l.state = newState
+	l.stateChangedCond.Broadcast()
+}
+
+func (l *Listener) waitForState(wantedState ListenerState) {
+	l.stateLock.Lock()
+	defer l.stateLock.Unlock()
+	for l.state != wantedState {
+		l.stateChangedCond.Wait()
+	}
 }
