@@ -103,14 +103,14 @@ func TestListener_slotIsExists(t *testing.T) {
 				repository: repo,
 			}
 
-			got, err := w.slotIsExists()
+			got, err := w.slotExists()
 			if (err != nil) != tt.wantErr {
-				t.Errorf("slotIsExists() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("slotExists() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if got != tt.want {
-				t.Errorf("slotIsExists() got = %v, want %v", got, tt.want)
+				t.Errorf("slotExists() got = %v, want %v", got, tt.want)
 			}
 
 			repo.AssertExpectations(t)
