@@ -109,7 +109,7 @@ func (c *Column) AssertValue(src []byte) {
 		val, err = strconv.Atoi(strSrc)
 	case Int8OID:
 		val, err = strconv.ParseInt(strSrc, 10, 64)
-	case TextOID, VarcharOID:
+	case TextOID, CharOID, VarcharOID:
 		val = strSrc
 	case TimestampOID:
 		val, err = time.Parse(timestampLayout, strSrc)
@@ -181,7 +181,7 @@ func (w *WalTransaction) CreateActionData(
 
 	for num, row := range oldRows {
 		column := Column{
-			log:       w.log,
+			log:       w.log.With("schema", rel.Schema, "table", rel.Table),
 			name:      rel.Columns[num].name,
 			valueType: rel.Columns[num].valueType,
 			isKey:     rel.Columns[num].isKey,
@@ -197,7 +197,7 @@ func (w *WalTransaction) CreateActionData(
 
 	for num, row := range newRows {
 		column := Column{
-			log:       w.log,
+			log:       w.log.With("schema", rel.Schema, "table", rel.Table),
 			name:      rel.Columns[num].name,
 			valueType: rel.Columns[num].valueType,
 			isKey:     rel.Columns[num].isKey,

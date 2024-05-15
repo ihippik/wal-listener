@@ -8,6 +8,7 @@ const (
 	Int8OID = 20
 
 	TextOID    = 25
+        CharOID    = 1042
 	VarcharOID = 1043
 
 	TimestampOID   = 1114
