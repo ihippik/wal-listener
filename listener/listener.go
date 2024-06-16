@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx"
@@ -62,6 +65,7 @@ type Listener struct {
 	repository repository
 	parser     parser
 	lsn        uint64
+	isAlive    atomic.Bool
 }
 
 // NewWalListener create and initialize new service instance.
@@ -82,6 +86,84 @@ func NewWalListener(
 		repository: repo,
 		replicator: repl,
 		parser:     parser,
+	}
+}
+
+// InitHandlers init web handlers for liveness & readiness k8s probes.
+func (l *Listener) InitHandlers(ctx context.Context) {
+	const defaultTimeout = 500 * time.Millisecond
+
+	if l.cfg.Listener.ServerPort == 0 {
+		l.log.Debug("web server port for probes not specified, skip")
+		return
+	}
+
+	handler := http.NewServeMux()
+	handler.HandleFunc("GET /healthz", l.liveness)
+	handler.HandleFunc("GET /ready", l.readiness)
+
+	addr := ":" + strconv.Itoa(l.cfg.Listener.ServerPort)
+	srv := http.Server{
+		Addr:         addr,
+		Handler:      handler,
+		ReadTimeout:  defaultTimeout,
+		WriteTimeout: defaultTimeout,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil {
+			l.log.Error("error starting http listener", "err", err)
+		}
+	}()
+
+	l.log.Debug("web handlers were initialised", slog.String("addr", addr))
+
+	<-ctx.Done()
+}
+
+const contentTypeTextPlain = "text/plain"
+
+func (l *Listener) liveness(w http.ResponseWriter, r *http.Request) {
+	var (
+		respCode = http.StatusOK
+		resp     = []byte(`ok`)
+	)
+
+	w.Header().Set("Content-Type", contentTypeTextPlain)
+
+	if !l.replicator.IsAlive() || !l.repository.IsAlive() {
+		resp = []byte("failed")
+		respCode = http.StatusInternalServerError
+
+		l.log.Warn("liveness probe failed")
+	}
+
+	w.WriteHeader(respCode)
+
+	if _, err := w.Write(resp); err != nil {
+		l.log.Error("liveness: error writing response", "err", err)
+	}
+}
+
+func (l *Listener) readiness(w http.ResponseWriter, r *http.Request) {
+	var (
+		respCode = http.StatusOK
+		resp     = []byte(`ok`)
+	)
+
+	w.Header().Set("Content-Type", contentTypeTextPlain)
+
+	if !l.isAlive.Load() {
+		resp = []byte("failed")
+		respCode = http.StatusInternalServerError
+
+		l.log.Warn("readiness probe failed")
+	}
+
+	w.WriteHeader(respCode)
+
+	if _, err := w.Write(resp); err != nil {
+		l.log.Error("liveness: error writing response", "err", err)
 	}
 }
 
@@ -346,9 +428,12 @@ func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 		case <-heart.C:
 			if err := l.SendStandbyStatus(); err != nil {
 				l.log.Error("failed to send heartbeat status", "err", err)
+				l.isAlive.Store(false)
+
 				continue
 			}
 
+			l.isAlive.Store(true)
 			l.log.Debug("sending periodic heartbeat status")
 		}
 	}
@@ -365,7 +450,7 @@ func (l *Listener) SendStandbyStatus() error {
 
 	standbyStatus.ReplyRequested = 0
 
-	if err := l.replicator.SendStandbyStatus(standbyStatus); err != nil {
+	if err = l.replicator.SendStandbyStatus(standbyStatus); err != nil {
 		return fmt.Errorf("unable to send StandbyStatus object: %w", err)
 	}
 

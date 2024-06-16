@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	scfg "github.com/ihippik/config"
 	"github.com/urfave/cli/v2"
@@ -35,6 +37,9 @@ func main() {
 			},
 		},
 		Action: func(c *cli.Context) error {
+			ctx, cancel := signal.NotifyContext(c.Context, syscall.SIGINT, syscall.SIGTERM)
+			defer cancel()
+
 			cfg, err := config.InitConfig(c.String("config"))
 			if err != nil {
 				return fmt.Errorf("get config: %w", err)
@@ -44,7 +49,7 @@ func main() {
 				return fmt.Errorf("validate config: %w", err)
 			}
 
-			if err := scfg.InitSentry(cfg.Monitoring.SentryDSN, version); err != nil {
+			if err = scfg.InitSentry(cfg.Monitoring.SentryDSN, version); err != nil {
 				return fmt.Errorf("init sentry: %w", err)
 			}
 
@@ -57,7 +62,7 @@ func main() {
 				return fmt.Errorf("pgx connection: %w", err)
 			}
 
-			pub, err := factoryPublisher(c.Context, cfg.Publisher, logger)
+			pub, err := factoryPublisher(ctx, cfg.Publisher, logger)
 			if err != nil {
 				return fmt.Errorf("factory publisher: %w", err)
 			}
@@ -78,7 +83,9 @@ func main() {
 				config.NewMetrics(),
 			)
 
-			if err := service.Process(c.Context); err != nil {
+			go service.InitHandlers(ctx)
+
+			if err := service.Process(ctx); err != nil {
 				slog.Error("service process failed", "err", err.Error())
 			}
 
