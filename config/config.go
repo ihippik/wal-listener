@@ -31,6 +31,7 @@ type Config struct {
 // ListenerCfg path of the listener config.
 type ListenerCfg struct {
 	SlotName          string `valid:"required"`
+	ServerPort        int
 	AckTimeout        time.Duration
 	RefreshConnection time.Duration `valid:"required"`
 	HeartbeatInterval time.Duration `valid:"required"`
@@ -38,7 +39,7 @@ type ListenerCfg struct {
 	TopicsMap         map[string]string
 }
 
-// PublisherCfg represent configuration for any types publisher.
+// PublisherCfg represent configuration for any publisher types.
 type PublisherCfg struct {
 	Type            PublisherType `valid:"required"`
 	Address         string

@@ -1,4 +1,5 @@
 listener:
+  serverPort: 80 # k8s probes, optional
   slotName: myslot_1
   refreshConnection: 30s
   heartbeatInterval: 10s

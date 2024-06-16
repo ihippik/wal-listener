@@ -138,6 +138,9 @@ You can take metrics by specifying an endpoint for Prometheus in the configurati
 | published_events_total      | the total number of published events | `subject`, `table` |
 | filter_skipped_events_total | the total number of skipped events   | `table`            |
 
+### Kubernetes
+Application initializes a web server (*if a port is specified in the configuration*) with two endpoints 
+for readiness `/ready`  and liveness `/healthz` probes.
 
 ## Docker
 
