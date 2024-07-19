@@ -131,7 +131,7 @@ func (c *Column) AssertValue(src []byte) {
 		err = json.Unmarshal(src, &m)
 		val = m
 	default:
-		c.log.Warn(
+		c.log.Debug(
 			"unknown oid type",
 			slog.Int("pg_type", c.valueType),
 			slog.String("column_name", c.name),
