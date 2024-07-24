@@ -33,18 +33,20 @@ func (n NatsPublisher) Close() error {
 }
 
 // Publish serializes the event and publishes it on the bus.
-func (n NatsPublisher) Publish(_ context.Context, subject string, event *Event) error {
+func (n NatsPublisher) Publish(_ context.Context, subject string, event *Event) PublishResult {
 	msg, err := json.Marshal(event)
 	if err != nil {
-		return fmt.Errorf("marshal err: %w", err)
+		return NewPublishResult(fmt.Errorf("marshal err: %w", err))
 	}
 
 	if _, err := n.js.Publish(subject, msg); err != nil {
-		return fmt.Errorf("failed to publish: %w", err)
+		return NewPublishResult(fmt.Errorf("failed to publish: %w", err))
 	}
 
-	return nil
+	return NewPublishResult(nil)
 }
+
+func (n NatsPublisher) Flush(subject string) {}
 
 // CreateStream creates a stream by using JetStreamContext. We can do it manually.
 func (n NatsPublisher) CreateStream(streamName string) error {

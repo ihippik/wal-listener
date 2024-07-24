@@ -23,7 +23,8 @@ import (
 const pgOutputPlugin = "pgoutput"
 
 type eventPublisher interface {
-	Publish(context.Context, string, *publisher.Event) error
+	Publish(context.Context, string, *publisher.Event) publisher.PublishResult
+	Flush(string)
 }
 
 type parser interface {
@@ -52,6 +53,20 @@ type monitor interface {
 	IncPublishedEvents(subject, table string)
 	IncFilterSkippedEvents(table string)
 	IncProblematicEvents(kind string)
+}
+
+type messageAndEvents struct {
+	msg    *pgx.ReplicationMessage
+	events []*publisher.Event
+}
+
+type eventAndPublishResult struct {
+	subjectName string
+	event       *publisher.Event
+	result      publisher.PublishResult
+	// Only include the message on the final event created from it
+	// we only ACK after the last message has been successfully published
+	msg *pgx.ReplicationMessage
 }
 
 // Listener main service struct.
@@ -300,80 +315,150 @@ func (l *Listener) Stream(ctx context.Context) error {
 		},
 	}
 
+	topicSet := make(map[string]bool)
+	defer func() {
+		for topic := range topicSet {
+			l.publisher.Flush(topic)
+		}
+	}()
+
 	tx := NewWalTransaction(l.log, pool, l.monitor)
 
-	for {
-		if err := ctx.Err(); err != nil {
-			l.log.Warn("stream: context canceled", "err", err)
-			return nil
-		}
+	group, ctx := errgroup.WithContext(ctx)
+	messageChan := make(chan *pgx.ReplicationMessage, 100)
+	eventsChan := make(chan *messageAndEvents, 100)
+	resultChan := make(chan *eventAndPublishResult, 500)
 
-		msg, err := l.replicator.WaitForReplicationMessage(ctx)
-		if err != nil {
-			return fmt.Errorf("wait for replication message: %w", err)
-		}
+	defer close(messageChan)
+	defer close(eventsChan)
+	defer close(resultChan)
 
-		if msg == nil {
-			l.log.Debug("got empty message")
-			continue
-		}
-
-		if err = l.processMessage(ctx, msg, tx); err != nil {
-			return fmt.Errorf("process message: %w", err)
-		}
-
-		l.processHeartBeat(msg)
-	}
-}
-
-func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessage, tx *WalTransaction) error {
-	if msg.WalMessage == nil {
-		l.log.Debug("empty wal-message")
-		return nil
-	}
-
-	l.log.Debug("WAL message has been received", slog.Uint64("wal", msg.WalMessage.WalStart))
-
-	if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
-		l.monitor.IncProblematicEvents(problemKindParse)
-		return fmt.Errorf("parse: %w", err)
-	}
-
-	if tx.CommitTime != nil {
-		for event := range tx.CreateEventsWithFilter(ctx, l.cfg.Listener.Filter.Tables) {
-			subjectName := event.SubjectName(l.cfg)
-
-			if err := l.publisher.Publish(ctx, subjectName, event); err != nil {
-				l.monitor.IncProblematicEvents(problemKindPublish)
-				return fmt.Errorf("publish: %w", err)
+	group.Go(func() error {
+		for {
+			if err := ctx.Err(); err != nil {
+				l.log.Warn("stream: context canceled", "err", err)
+				return nil
 			}
 
-			l.monitor.IncPublishedEvents(subjectName, event.Table)
+			msg, err := l.replicator.WaitForReplicationMessage(ctx)
+			if err != nil {
+				return fmt.Errorf("wait for replication message: %w", err)
+			}
 
-			l.log.Info(
-				"event was sent",
-				slog.String("subject", subjectName),
-				slog.String("action", event.Action),
-				slog.String("table", event.Table),
-				slog.Uint64("lsn", l.readLSN()),
-			)
+			if msg == nil {
+				continue
+			}
 
-			tx.pool.Put(event)
+			messageChan <- msg
 		}
+	})
 
-		tx.Clear()
-	}
+	group.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				l.log.Warn("stream: context canceled", "err", ctx.Err())
+				return nil
+			case msg := <-messageChan:
+				if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
+					l.monitor.IncProblematicEvents(problemKindParse)
+					return fmt.Errorf("parse: %w", err)
+				}
 
-	if msg.WalMessage.WalStart > l.readLSN() {
-		if err := l.AckWalMessage(msg.WalMessage.WalStart); err != nil {
-			l.monitor.IncProblematicEvents(problemKindAck)
-			return fmt.Errorf("ack: %w", err)
+				if tx.CommitTime != nil {
+					events := tx.CreateEventsWithFilter(ctx, l.cfg.Listener.Filter.Tables)
+
+					eventsChan <- &messageAndEvents{
+						msg,
+						events,
+					}
+					tx.Clear()
+				}
+
+				l.processHeartBeat(msg)
+			}
 		}
+	})
 
-		l.log.Debug("ack WAL message", slog.Uint64("lsn", l.readLSN()))
-	}
+	group.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				l.log.Warn("stream: context canceled", "err", ctx.Err())
+				return nil
+			case object := <-eventsChan:
+				events, msg := object.events, object.msg
 
-	return nil
+				for idx, event := range events {
+					subjectName := event.SubjectName(l.cfg)
+					topicSet[subjectName] = true
+
+					result := l.publisher.Publish(ctx, subjectName, event)
+
+					// Include the message on the last event of the batch
+					if idx == len(events)-1 {
+						resultChan <- &eventAndPublishResult{
+							subjectName: subjectName,
+							event:       event,
+							result:      result,
+							msg:         msg,
+						}
+					} else {
+						resultChan <- &eventAndPublishResult{
+							subjectName: subjectName,
+							event:       event,
+							result:      result,
+						}
+					}
+				}
+			}
+		}
+	})
+
+	group.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				l.log.Warn("stream: context canceled", "err", ctx.Err())
+				return nil
+			case object := <-resultChan:
+				subjectName, result, event, msg := object.subjectName, object.result, object.event, object.msg
+
+				_, err := result.Get(ctx)
+				if err != nil {
+					l.monitor.IncProblematicEvents(problemKindPublish)
+					// FIXME: don't tear down the streamer when an error fails to be published
+					return fmt.Errorf("publish: %w", err)
+				}
+
+				l.monitor.IncPublishedEvents(subjectName, event.Table)
+
+				l.log.Info(
+					"event was sent",
+					slog.String("subject", subjectName),
+					slog.String("action", event.Action),
+					slog.String("table", event.Table),
+					slog.Uint64("lsn", l.readLSN()),
+				)
+
+				tx.pool.Put(event)
+
+				if msg != nil {
+					if msg.WalMessage.WalStart > l.readLSN() {
+						if err := l.AckWalMessage(msg.WalMessage.WalStart); err != nil {
+							l.monitor.IncProblematicEvents(problemKindAck)
+							return fmt.Errorf("ack: %w", err)
+						}
+
+						l.log.Debug("ack WAL message", slog.Uint64("lsn", l.readLSN()))
+					}
+				}
+			}
+
+		}
+	})
+
+	return group.Wait()
 }
 
 func (l *Listener) processHeartBeat(msg *pgx.ReplicationMessage) {

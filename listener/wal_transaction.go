@@ -213,59 +213,55 @@ func (w *WalTransaction) CreateActionData(
 
 // CreateEventsWithFilter filter WAL message by table,
 // action and create events for each value.
-func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context, tableMap map[string][]string) <-chan *publisher.Event {
-	output := make(chan *publisher.Event)
+func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context, tableMap map[string][]string) []*publisher.Event {
+	var events []*publisher.Event
 
-	go func(ctx context.Context) {
-		for _, item := range w.Actions {
-			if err := ctx.Err(); err != nil {
-				w.log.Debug("create events with filter: context canceled")
-				break
-			}
-
-			dataOld := make(map[string]any, len(item.OldColumns))
-
-			for _, val := range item.OldColumns {
-				dataOld[val.name] = val.value
-			}
-
-			data := make(map[string]any, len(item.NewColumns))
-
-			for _, val := range item.NewColumns {
-				data[val.name] = val.value
-			}
-
-			event := w.pool.Get().(*publisher.Event)
-			event.ID = uuid.New()
-			event.Schema = item.Schema
-			event.Table = item.Table
-			event.Action = item.Kind.string()
-			event.Data = data
-			event.DataOld = dataOld
-			event.EventTime = *w.CommitTime
-
-			actions, validTable := tableMap[item.Table]
-
-			validAction := inArray(actions, item.Kind.string())
-			if validTable && validAction {
-				output <- event
-				continue
-			}
-
-			w.monitor.IncFilterSkippedEvents(item.Table)
-
-			w.log.Debug(
-				"wal-message was skipped by filter",
-				slog.String("schema", item.Schema),
-				slog.String("table", item.Table),
-				slog.String("action", string(item.Kind)),
-			)
+	for _, item := range w.Actions {
+		if err := ctx.Err(); err != nil {
+			w.log.Debug("create events with filter: context canceled")
+			break
 		}
 
-		close(output)
-	}(ctx)
+		dataOld := make(map[string]any, len(item.OldColumns))
 
-	return output
+		for _, val := range item.OldColumns {
+			dataOld[val.name] = val.value
+		}
+
+		data := make(map[string]any, len(item.NewColumns))
+
+		for _, val := range item.NewColumns {
+			data[val.name] = val.value
+		}
+
+		event := w.pool.Get().(*publisher.Event)
+		event.ID = uuid.New()
+		event.Schema = item.Schema
+		event.Table = item.Table
+		event.Action = item.Kind.string()
+		event.Data = data
+		event.DataOld = dataOld
+		event.EventTime = *w.CommitTime
+
+		actions, validTable := tableMap[item.Table]
+
+		validAction := inArray(actions, item.Kind.string())
+		if validTable && validAction {
+			events = append(events, event)
+			continue
+		}
+
+		w.monitor.IncFilterSkippedEvents(item.Table)
+
+		w.log.Debug(
+			"wal-message was skipped by filter",
+			slog.String("schema", item.Schema),
+			slog.String("table", item.Table),
+			slog.String("action", string(item.Kind)),
+		)
+	}
+
+	return events
 }
 
 // inArray checks whether the value is in an array.

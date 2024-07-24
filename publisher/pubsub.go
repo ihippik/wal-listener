@@ -20,13 +20,17 @@ func NewGooglePubSubPublisher(pubSubConnection *PubSubConnection) *GooglePubSubP
 }
 
 // Publish send events, implements eventPublisher.
-func (p *GooglePubSubPublisher) Publish(ctx context.Context, topic string, event *Event) error {
+func (p *GooglePubSubPublisher) Publish(ctx context.Context, topic string, event *Event) PublishResult {
 	body, err := json.Marshal(event)
 	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
+		return NewPublishResult(fmt.Errorf("marshal: %w", err))
 	}
 
 	return p.pubSubConnection.Publish(ctx, topic, body)
+}
+
+func (p *GooglePubSubPublisher) Flush(topic string) {
+	p.pubSubConnection.Flush(topic)
 }
 
 func (p *GooglePubSubPublisher) Close() error {

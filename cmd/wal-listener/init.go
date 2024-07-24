@@ -47,7 +47,8 @@ func (l pgxLogger) Log(_ pgx.LogLevel, msg string, _ map[string]any) {
 }
 
 type eventPublisher interface {
-	Publish(context.Context, string, *publisher.Event) error
+	Publish(context.Context, string, *publisher.Event) publisher.PublishResult
+	Flush(string)
 	Close() error
 }
 
