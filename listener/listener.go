@@ -218,7 +218,7 @@ func (l *Listener) Process(ctx context.Context) error {
 		logger.Info("slot already exists, LSN updated")
 	}
 
-	group := new(errgroup.Group)
+	group, ctx := errgroup.WithContext(ctx)
 
 	group.Go(func() error {
 		return l.Stream(ctx)
@@ -250,7 +250,7 @@ func (l *Listener) checkConnection(ctx context.Context) error {
 				return fmt.Errorf("repository: %w", errConnectionIsLost)
 			}
 		case <-ctx.Done():
-			l.log.Debug("cgeck connection: context was canceled")
+			l.log.Debug("check connection: context was canceled")
 
 			if err := l.Stop(); err != nil {
 				l.log.Error("failed to stop service", "err", err)
@@ -322,7 +322,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 		}
 	}()
 
-	tx := NewWalTransaction(l.log, pool, l.monitor)
+	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude.Tables)
 
 	group, ctx := errgroup.WithContext(ctx)
 	messageChan := make(chan *pgx.ReplicationMessage, 100)
@@ -345,7 +345,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 				return fmt.Errorf("wait for replication message: %w", err)
 			}
 
-			if msg == nil {
+			if msg == nil || msg.WalMessage == nil {
 				continue
 			}
 
@@ -360,13 +360,14 @@ func (l *Listener) Stream(ctx context.Context) error {
 				l.log.Warn("stream: context canceled", "err", ctx.Err())
 				return nil
 			case msg := <-messageChan:
-				if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
+				err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx)
+				if err != nil {
 					l.monitor.IncProblematicEvents(problemKindParse)
 					return fmt.Errorf("parse: %w", err)
 				}
 
 				if tx.CommitTime != nil {
-					events := tx.CreateEventsWithFilter(ctx, l.cfg.Listener.Filter.Tables)
+					events := tx.CreateEventsWithFilter(ctx)
 
 					eventsChan <- &messageAndEvents{
 						msg,

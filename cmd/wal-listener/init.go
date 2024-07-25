@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 
@@ -22,6 +23,12 @@ func initPgxConnections(cfg *config.DatabaseCfg, logger *slog.Logger) (*pgx.Conn
 		Database: cfg.Name,
 		User:     cfg.User,
 		Password: cfg.Password,
+	}
+
+	if cfg.SSL != nil {
+		pgxConf.TLSConfig = &tls.Config{
+			InsecureSkipVerify: cfg.SSL.SkipVerify,
+		}
 	}
 
 	pgConn, err := pgx.Connect(pgxConf)
@@ -96,7 +103,7 @@ func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slo
 
 		return pub, nil
 	case config.PublisherTypeGooglePubSub:
-		pubSubConn, err := publisher.NewPubSubConnection(ctx, logger, cfg.PubSubProjectID)
+		pubSubConn, err := publisher.NewPubSubConnection(ctx, logger, cfg.PubSubProjectID, cfg.EnableOrdering)
 		if err != nil {
 			return nil, fmt.Errorf("could not create pubsub connection: %w", err)
 		}

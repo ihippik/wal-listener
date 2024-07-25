@@ -2,6 +2,7 @@ package listener
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -30,26 +31,32 @@ type transactionMonitor interface {
 
 // WalTransaction transaction specified WAL message.
 type WalTransaction struct {
+	pool          *sync.Pool
 	log           *slog.Logger
 	monitor       transactionMonitor
-	LSN           int64
-	BeginTime     *time.Time
-	CommitTime    *time.Time
 	RelationStore map[int32]RelationData
 	Actions       []ActionData
-	pool          *sync.Pool
+
+	LSN        int64
+	BeginTime  *time.Time
+	CommitTime *time.Time
+
+	includeTableMap map[string][]string
+	excludeTables   []string
 }
 
 // NewWalTransaction create and initialize new WAL transaction.
-func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor) *WalTransaction {
+func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor, includeTableMap map[string][]string, excludeTables []string) *WalTransaction {
 	const aproxData = 300
 
 	return &WalTransaction{
-		pool:          pool,
-		log:           log,
-		monitor:       monitor,
-		RelationStore: make(map[int32]RelationData),
-		Actions:       make([]ActionData, 0, aproxData),
+		pool:            pool,
+		log:             log,
+		monitor:         monitor,
+		RelationStore:   make(map[int32]RelationData),
+		Actions:         make([]ActionData, 0, aproxData),
+		includeTableMap: includeTableMap,
+		excludeTables:   excludeTables,
 	}
 }
 
@@ -115,6 +122,8 @@ func (c *Column) AssertValue(src []byte) {
 		val, err = time.Parse(timestampLayout, strSrc)
 	case TimestamptzOID:
 		val, err = time.ParseInLocation(timestampWithTZLayout, strSrc, time.UTC)
+	case TSVectorOID:
+		val = strSrc
 	case DateOID, TimeOID:
 		val = strSrc
 	case UUIDOID:
@@ -131,7 +140,7 @@ func (c *Column) AssertValue(src []byte) {
 		err = json.Unmarshal(src, &m)
 		val = m
 	default:
-		c.log.Warn(
+		c.log.Debug(
 			"unknown oid type",
 			slog.Int("pg_type", c.valueType),
 			slog.String("column_name", c.name),
@@ -213,13 +222,18 @@ func (w *WalTransaction) CreateActionData(
 
 // CreateEventsWithFilter filter WAL message by table,
 // action and create events for each value.
-func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context, tableMap map[string][]string) []*publisher.Event {
+func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publisher.Event {
 	var events []*publisher.Event
 
 	for _, item := range w.Actions {
 		if err := ctx.Err(); err != nil {
 			w.log.Debug("create events with filter: context canceled")
 			break
+		}
+
+		if inArray(w.excludeTables, item.Table) {
+			w.skipItem(item)
+			continue
 		}
 
 		dataOld := make(map[string]any, len(item.OldColumns))
@@ -243,25 +257,37 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context, tableMap ma
 		event.DataOld = dataOld
 		event.EventTime = *w.CommitTime
 
-		actions, validTable := tableMap[item.Table]
-
-		validAction := inArray(actions, item.Kind.string())
-		if validTable && validAction {
-			events = append(events, event)
-			continue
+		for _, val := range item.NewColumns {
+			if val.isKey {
+				event.PrimaryKey = append(event.PrimaryKey, fmt.Sprint(val.value))
+			}
 		}
 
-		w.monitor.IncFilterSkippedEvents(item.Table)
+		actions, found := w.includeTableMap[item.Table]
+		if found {
+			if inArray(actions, item.Kind.string()) {
+				events = append(events, event)
+				continue
+			} else {
+				w.skipItem(item)
+			}
+		}
 
-		w.log.Debug(
-			"wal-message was skipped by filter",
-			slog.String("schema", item.Schema),
-			slog.String("table", item.Table),
-			slog.String("action", string(item.Kind)),
-		)
+		events = append(events, event)
 	}
 
 	return events
+}
+
+func (w *WalTransaction) skipItem(item ActionData) {
+	w.monitor.IncFilterSkippedEvents(item.Table)
+
+	w.log.Debug(
+		"wal-message was skipped by filter",
+		slog.String("schema", item.Schema),
+		slog.String("table", item.Table),
+		slog.String("action", string(item.Kind)),
+	)
 }
 
 // inArray checks whether the value is in an array.
