@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/v5"
 	"github.com/nats-io/nats.go"
 
 	"github.com/ihippik/wal-listener/v2/config"

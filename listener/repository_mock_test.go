@@ -1,7 +1,7 @@
 package listener
 
 import (
-	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/mock"
 )
 

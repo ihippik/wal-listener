@@ -13,7 +13,7 @@ import (
 	"time"
 
 	retry "github.com/avast/retry-go/v4"
-	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ihippik/wal-listener/v2/config"
