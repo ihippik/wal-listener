@@ -190,7 +190,7 @@ func (l *Listener) Process(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
-	logger.Info("service was started")
+	logger.Info("service was started", slog.String("version", "v0.2.0"))
 
 	if err := l.repository.CreatePublication(publicationName); err != nil {
 		logger.Warn("publication creation was skipped", "err", err)
