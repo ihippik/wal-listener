@@ -204,6 +204,10 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond).Once()
 	}
 
+	setNewStandbyStatusRetry := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
+		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond).Times(3)
+	}
+
 	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
 		repl.On(
 			"SendStandbyStatus",
@@ -211,6 +215,15 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 		).
 			Return(err).
 			Once()
+	}
+
+	setSendStandbyStatusRetry := func(status *pgx.StandbyStatus, err error) {
+		repl.On(
+			"SendStandbyStatus",
+			standByStatusMatcher(status),
+		).
+			Return(err).
+			Times(3)
 	}
 
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
@@ -251,7 +264,7 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 		{
 			name: "some replicator err",
 			setup: func() {
-				setNewStandbyStatus([]uint64{10}, &pgx.StandbyStatus{
+				setNewStandbyStatusRetry([]uint64{10}, &pgx.StandbyStatus{
 					WalWritePosition: 10,
 					WalFlushPosition: 10,
 					WalApplyPosition: 10,
@@ -259,7 +272,7 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 					ReplyRequested:   0,
 				}, nil)
 
-				setSendStandbyStatus(
+				setSendStandbyStatusRetry(
 					&pgx.StandbyStatus{
 						WalWritePosition: 10,
 						WalFlushPosition: 10,
@@ -278,7 +291,7 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 		{
 			name: "some repo err",
 			setup: func() {
-				setNewStandbyStatus([]uint64{10}, &pgx.StandbyStatus{
+				setNewStandbyStatusRetry([]uint64{10}, &pgx.StandbyStatus{
 					WalWritePosition: 10,
 					WalFlushPosition: 10,
 					WalApplyPosition: 10,
@@ -347,6 +360,10 @@ func TestListener_AckWalMessage(t *testing.T) {
 		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond).Once()
 	}
 
+	setNewStandbyStatusRetry := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
+		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond).Times(3)
+	}
+
 	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
 		repl.On(
 			"SendStandbyStatus",
@@ -354,6 +371,15 @@ func TestListener_AckWalMessage(t *testing.T) {
 		).
 			Return(err).
 			Once()
+	}
+
+	setSendStandbyStatusRetry := func(status *pgx.StandbyStatus, err error) {
+		repl.On(
+			"SendStandbyStatus",
+			standByStatusMatcher(status),
+		).
+			Return(err).
+			Times(3)
 	}
 
 	tests := []struct {
@@ -396,7 +422,7 @@ func TestListener_AckWalMessage(t *testing.T) {
 		{
 			name: "send status error",
 			setup: func() {
-				setNewStandbyStatus([]uint64{24658872}, &pgx.StandbyStatus{
+				setNewStandbyStatusRetry([]uint64{24658872}, &pgx.StandbyStatus{
 					WalWritePosition: 24658872,
 					WalFlushPosition: 24658872,
 					WalApplyPosition: 24658872,
@@ -404,7 +430,7 @@ func TestListener_AckWalMessage(t *testing.T) {
 					ReplyRequested:   0,
 				}, nil)
 
-				setSendStandbyStatus(
+				setSendStandbyStatusRetry(
 					&pgx.StandbyStatus{
 						WalWritePosition: 24658872,
 						WalFlushPosition: 24658872,

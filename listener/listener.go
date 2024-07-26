@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	retry "github.com/avast/retry-go/v4"
 	"github.com/jackc/pgx"
 	"golang.org/x/sync/errgroup"
 
@@ -427,20 +428,20 @@ func (l *Listener) Stream(ctx context.Context) error {
 
 				_, err := result.Get(ctx)
 				if err != nil {
+					// Only warn on publish failures, but continue to process and ack messages
+					// this runs the risk of losing data, but this it is more important to keep processing WAL messages in the meantime
 					l.monitor.IncProblematicEvents(problemKindPublish)
-					// FIXME: don't tear down the streamer when an error fails to be published
-					return fmt.Errorf("publish: %w", err)
+					l.log.Warn("failed to publish message", slog.Any("error", err), slog.String("subjectName", subjectName), slog.String("table", event.Table), slog.String("action", event.Action))
+				} else {
+					l.monitor.IncPublishedEvents(subjectName, event.Table)
+					l.log.Info(
+						"event was sent",
+						slog.String("subject", subjectName),
+						slog.String("action", event.Action),
+						slog.String("table", event.Table),
+						slog.Uint64("lsn", l.readLSN()),
+					)
 				}
-
-				l.monitor.IncPublishedEvents(subjectName, event.Table)
-
-				l.log.Info(
-					"event was sent",
-					slog.String("subject", subjectName),
-					slog.String("action", event.Action),
-					slog.String("table", event.Table),
-					slog.Uint64("lsn", l.readLSN()),
-				)
 
 				tx.pool.Put(event)
 
@@ -529,18 +530,20 @@ func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 func (l *Listener) SendStandbyStatus() error {
 	lsn := l.readLSN()
 
-	standbyStatus, err := l.repository.NewStandbyStatus(lsn)
-	if err != nil {
-		return fmt.Errorf("unable to create StandbyStatus object: %w", err)
-	}
+	return retry.Do(func() error {
+		standbyStatus, err := l.repository.NewStandbyStatus(lsn)
+		if err != nil {
+			return fmt.Errorf("unable to create StandbyStatus object: %w", err)
+		}
 
-	standbyStatus.ReplyRequested = 0
+		standbyStatus.ReplyRequested = 0
 
-	if err = l.replicator.SendStandbyStatus(standbyStatus); err != nil {
-		return fmt.Errorf("unable to send StandbyStatus object: %w", err)
-	}
+		if err = l.replicator.SendStandbyStatus(standbyStatus); err != nil {
+			return fmt.Errorf("unable to send StandbyStatus object: %w", err)
+		}
 
-	return nil
+		return nil
+	}, retry.Attempts(3))
 }
 
 // AckWalMessage acknowledge received wal message.
