@@ -1,11 +1,12 @@
 module github.com/ihippik/wal-listener/v2
 
-go 1.22.4
+go 1.22.3
 
 require (
 	cloud.google.com/go/pubsub v1.37.0
 	github.com/IBM/sarama v1.43.0
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
+	github.com/avast/retry-go/v4 v4.6.0
 	github.com/goccy/go-json v0.10.2
 	github.com/google/uuid v1.6.0
 	github.com/ihippik/config v0.1.1
@@ -14,11 +15,10 @@ require (
 	github.com/nats-io/nats.go v1.31.0
 	github.com/prometheus/client_golang v1.17.0
 	github.com/spf13/viper v1.18.1
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 	github.com/urfave/cli/v2 v2.26.0
 	github.com/wagslane/go-rabbitmq v0.12.4
 	golang.org/x/sync v0.6.0
-	google.golang.org/grpc v1.62.0
 )
 
 require (
@@ -80,7 +80,7 @@ require (
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/objx v0.5.1 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20231213231151-1d8dd44e695e // indirect
 	go.opencensus.io v0.24.0 // indirect
@@ -102,6 +102,7 @@ require (
 	google.golang.org/genproto v0.0.0-20240213162025-012b6fc9bca9 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240304161311-37d4d3c04a78 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240228224816-df926f6c8641 // indirect
+	google.golang.org/grpc v1.62.0 // indirect
 	google.golang.org/protobuf v1.32.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
