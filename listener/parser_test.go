@@ -487,7 +487,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 0, 0, 0, 0, 0,
 					0, 0, 0, 5,
 				},
-				tx: NewWalTransaction(logger, nil, metrics),
+				tx: NewWalTransaction(logger, nil, metrics, nil, nil),
 			},
 			want: &WalTransaction{
 				pool:          nil,

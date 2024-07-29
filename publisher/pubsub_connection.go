@@ -17,15 +17,16 @@ const (
 
 // PubSubConnection represent Pub/Sub connection.
 type PubSubConnection struct {
-	logger    *slog.Logger
-	client    *pubsub.Client
-	projectID string
-	topics    map[string]*pubsub.Topic
-	mu        sync.RWMutex
+	logger         *slog.Logger
+	client         *pubsub.Client
+	projectID      string
+	topics         map[string]*pubsub.Topic
+	enableOrdering bool
+	mu             sync.RWMutex
 }
 
 // NewPubSubConnection create new connection with specified project id.
-func NewPubSubConnection(ctx context.Context, logger *slog.Logger, pubSubProjectID string) (*PubSubConnection, error) {
+func NewPubSubConnection(ctx context.Context, logger *slog.Logger, pubSubProjectID string, enableOrdering bool) (*PubSubConnection, error) {
 	if pubSubProjectID == "" {
 		return nil, fmt.Errorf("project id is required for pub sub connection")
 	}
@@ -36,10 +37,11 @@ func NewPubSubConnection(ctx context.Context, logger *slog.Logger, pubSubProject
 	}
 
 	return &PubSubConnection{
-		logger:    logger,
-		client:    cli,
-		projectID: pubSubProjectID,
-		topics:    make(map[string]*pubsub.Topic),
+		logger:         logger,
+		client:         cli,
+		projectID:      pubSubProjectID,
+		topics:         make(map[string]*pubsub.Topic),
+		enableOrdering: enableOrdering,
 	}, nil
 }
 
@@ -52,7 +54,7 @@ func (c *PubSubConnection) getTopic(topic string) *pubsub.Topic {
 	}
 
 	t := c.client.TopicInProject(topic, c.projectID)
-	t.EnableMessageOrdering = true
+	t.EnableMessageOrdering = c.enableOrdering
 	t.PublishSettings.ByteThreshold = 8 * MB
 	t.PublishSettings.DelayThreshold = 500 * time.Millisecond
 	t.PublishSettings.CountThreshold = 300
@@ -62,11 +64,12 @@ func (c *PubSubConnection) getTopic(topic string) *pubsub.Topic {
 	return t
 }
 
-func (c *PubSubConnection) Publish(ctx context.Context, topic string, data []byte) PublishResult {
+func (c *PubSubConnection) Publish(ctx context.Context, topic string, data []byte, orderingKey string) PublishResult {
 	t := c.getTopic(topic)
 
 	return t.Publish(ctx, &pubsub.Message{
-		Data: data,
+		Data:        data,
+		OrderingKey: orderingKey,
 	})
 }
 

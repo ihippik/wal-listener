@@ -18,4 +18,6 @@ const (
 	JSONBOID = 3802
 	UUIDOID  = 2950
 	BoolOID  = 16
+
+	TSVectorOID = 3614
 )

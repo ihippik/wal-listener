@@ -3,6 +3,7 @@ package publisher
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/goccy/go-json"
 )
@@ -26,7 +27,7 @@ func (p *GooglePubSubPublisher) Publish(ctx context.Context, topic string, event
 		return NewPublishResult(fmt.Errorf("marshal: %w", err))
 	}
 
-	return p.pubSubConnection.Publish(ctx, topic, body)
+	return p.pubSubConnection.Publish(ctx, topic, body, strings.Join(event.PrimaryKey, "-"))
 }
 
 func (p *GooglePubSubPublisher) Flush(topic string) {
