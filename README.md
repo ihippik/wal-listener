@@ -172,5 +172,5 @@ docker run -v $(pwd)/config.yml:/app/config.yml ihippik/wal-listener:tag
 Run:
 
 ```shell
-docker buildx build --platform linux/amd64,linux/arm64 --push -t gcr.io/gadget-core-production/wal-listener:sha-(git rev-parse HEAD) .
+docker buildx build --platform linux/amd64 --push -t us-central1-docker.pkg.dev/gadget-core-production/core-production/wal-listener:sha-$(git rev-parse HEAD) .
 ```
