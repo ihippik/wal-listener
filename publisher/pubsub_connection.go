@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"cloud.google.com/go/pubsub"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+)
+
+const (
+	KB = 1024
+	MB = KB * KB
 )
 
 // PubSubConnection represent Pub/Sub connection.
@@ -48,34 +52,27 @@ func (c *PubSubConnection) getTopic(topic string) *pubsub.Topic {
 	}
 
 	t := c.client.TopicInProject(topic, c.projectID)
-	t.PublishSettings.NumGoroutines = 1
-	t.PublishSettings.CountThreshold = 1
+	t.EnableMessageOrdering = true
+	t.PublishSettings.ByteThreshold = 8 * MB
+	t.PublishSettings.DelayThreshold = 500 * time.Millisecond
+	t.PublishSettings.CountThreshold = 300
+
 	c.topics[topic] = t
 
 	return t
 }
 
-func (c *PubSubConnection) Publish(ctx context.Context, topic string, data []byte) error {
+func (c *PubSubConnection) Publish(ctx context.Context, topic string, data []byte) PublishResult {
 	t := c.getTopic(topic)
-	defer t.Flush()
 
-	var res *pubsub.PublishResult
-
-	res = t.Publish(ctx, &pubsub.Message{
+	return t.Publish(ctx, &pubsub.Message{
 		Data: data,
 	})
+}
 
-	if _, err := res.Get(ctx); err != nil {
-		c.logger.Error("Failed to publish message", "err", err)
-
-		if status.Code(err) == codes.NotFound {
-			return fmt.Errorf("topic not found %w", err)
-		}
-
-		return fmt.Errorf("get: %w", err)
-	}
-
-	return nil
+func (c *PubSubConnection) Flush(topic string) {
+	t := c.getTopic(topic)
+	t.Flush()
 }
 
 func (c *PubSubConnection) Close() error {
