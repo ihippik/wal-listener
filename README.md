@@ -139,7 +139,7 @@ You can take metrics by specifying an endpoint for Prometheus in the configurati
 | filter_skipped_events_total | the total number of skipped events   | `table`            |
 
 ### Kubernetes
-Application initializes a web server (*if a port is specified in the configuration*) with two endpoints 
+Application initializes a web server (*if a port is specified in the configuration*) with two endpoints
 for readiness `/ready`  and liveness `/healthz` probes.
 
 ## Docker
@@ -161,7 +161,16 @@ docker image prune --filter label=stage=builder
 
 #### Docker Hub
 https://hub.docker.com/r/ihippik/wal-listener
+
 #### Example
 ```shell
 docker run -v $(pwd)/config.yml:/app/config.yml ihippik/wal-listener:tag
+```
+
+#### Publishing a new docker container
+
+Run:
+
+```shell
+docker buildx build --platform linux/amd64,linux/arm64 --push -t gcr.io/gadget-core-production/wal-listener:sha-(git rev-parse HEAD) .
 ```

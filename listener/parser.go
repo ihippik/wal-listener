@@ -146,6 +146,18 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		}
 
 		tx.Actions = append(tx.Actions, action)
+	case TruncateMsgType:
+		truncateMessages := p.getTruncateMessages()
+		p.log.Debug("truncate type message was received")
+
+		for _, msg := range truncateMessages {
+			action, err := tx.CreateActionData(msg.RelationID, nil, nil, ActionKindTruncate)
+			if err != nil {
+				return fmt.Errorf("truncate action data: %w", err)
+			}
+
+			tx.Actions = append(tx.Actions, action)
+		}
 	default:
 		return fmt.Errorf("%w : %s", errUnknownMessageType, []byte{p.msgType})
 	}
@@ -185,6 +197,20 @@ func (p *BinaryParser) getDeleteMsg() Delete {
 		OldTuple:   p.charIsExists('O'),
 		OldRow:     p.readTupleData(),
 	}
+}
+
+func (p *BinaryParser) getTruncateMessages() []Truncate {
+	count := p.readInt32()
+	options := p.readInt8()
+
+	messages := make([]Truncate, count)
+	for i := int32(0); i < count; i++ {
+		messages[i] = Truncate{
+			RelationID: p.readInt32(),
+			Cascade:    options&1 == 1,
+		}
+	}
+	return messages
 }
 
 func (p *BinaryParser) getUpdateMsg() Update {

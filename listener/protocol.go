@@ -29,6 +29,9 @@ const (
 	// DeleteMsgType protocol delete message type.
 	DeleteMsgType byte = 'D'
 
+	// TruncateMsgType protocol truncate message type.
+	TruncateMsgType byte = 'T'
+
 	// NewTupleDataType protocol new tuple data type.
 	NewTupleDataType byte = 'N'
 
@@ -127,6 +130,14 @@ type (
 		OldTuple bool
 		// TupleData message part representing the contents of new tuple.
 		OldRow []TupleData
+	}
+
+	// Truncate message format.
+	Truncate struct {
+		/// ID of the relation corresponding to the ID that was truncated
+		RelationID int32
+		// Cascade option
+		Cascade bool
 	}
 )
 

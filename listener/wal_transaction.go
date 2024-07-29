@@ -19,9 +19,10 @@ type ActionKind string
 
 // kind of WAL message.
 const (
-	ActionKindInsert ActionKind = "INSERT"
-	ActionKindUpdate ActionKind = "UPDATE"
-	ActionKindDelete ActionKind = "DELETE"
+	ActionKindInsert   ActionKind = "INSERT"
+	ActionKindUpdate   ActionKind = "UPDATE"
+	ActionKindDelete   ActionKind = "DELETE"
+	ActionKindTruncate ActionKind = "TRUNCATE"
 )
 
 type transactionMonitor interface {
@@ -115,7 +116,7 @@ func (c *Column) AssertValue(src []byte) {
 		val, err = time.Parse(timestampLayout, strSrc)
 	case TimestamptzOID:
 		val, err = time.ParseInLocation(timestampWithTZLayout, strSrc, time.UTC)
-	case DateOID, TimeOID:
+	case DateOID, TimeOID, TSVectorOID:
 		val = strSrc
 	case UUIDOID:
 		val, err = uuid.Parse(strSrc)
