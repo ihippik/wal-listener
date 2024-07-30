@@ -44,10 +44,11 @@ type WalTransaction struct {
 
 	includeTableMap map[string][]string
 	excludeTables   []string
+	excludeColumns  []string
 }
 
 // NewWalTransaction create and initialize new WAL transaction.
-func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor, includeTableMap map[string][]string, excludeTables []string) *WalTransaction {
+func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor, includeTableMap map[string][]string, excludeTables, excludeColumns []string) *WalTransaction {
 	const aproxData = 300
 
 	return &WalTransaction{
@@ -58,6 +59,7 @@ func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMon
 		Actions:         make([]ActionData, 0, aproxData),
 		includeTableMap: includeTableMap,
 		excludeTables:   excludeTables,
+		excludeColumns:  excludeColumns,
 	}
 }
 
@@ -240,13 +242,24 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		dataOld := make(map[string]any, len(item.OldColumns))
 
 		for _, val := range item.OldColumns {
+			if inArray(w.excludeColumns, val.name) {
+				continue
+			}
 			dataOld[val.name] = val.value
 		}
 
 		data := make(map[string]any, len(item.NewColumns))
 
+		var primaryKey []string
+
 		for _, val := range item.NewColumns {
+			if inArray(w.excludeColumns, val.name) {
+				continue
+			}
 			data[val.name] = val.value
+			if val.isKey {
+				primaryKey = append(primaryKey, fmt.Sprint(val.value))
+			}
 		}
 
 		event := w.pool.Get().(*publisher.Event)
@@ -257,25 +270,15 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		event.Data = data
 		event.DataOld = dataOld
 		event.EventTime = *w.CommitTime
-		event.PrimaryKey = nil
-
-		for _, val := range item.NewColumns {
-			if val.isKey {
-				event.PrimaryKey = append(event.PrimaryKey, fmt.Sprint(val.value))
-			}
-		}
+		event.PrimaryKey = primaryKey
 
 		actions, found := w.includeTableMap[item.Table]
-		if found {
-			if inArray(actions, item.Kind.string()) {
-				events = append(events, event)
-				continue
-			} else {
-				w.skipItem(item)
-			}
-		}
 
-		events = append(events, event)
+		if found && !inArray(actions, item.Kind.string()) {
+			w.skipItem(item)
+		} else {
+			events = append(events, event)
+		}
 	}
 
 	return events
