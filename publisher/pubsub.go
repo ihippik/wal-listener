@@ -2,7 +2,10 @@ package publisher
 
 import (
 	"context"
+	"crypto/sha512"
+	"encoding/hex"
 	"fmt"
+	"hash"
 	"strings"
 
 	"github.com/goccy/go-json"
@@ -11,12 +14,14 @@ import (
 // GooglePubSubPublisher represent Pub/Sub publisher.
 type GooglePubSubPublisher struct {
 	pubSubConnection *PubSubConnection
+	hasher           hash.Hash
 }
 
 // NewGooglePubSubPublisher create new instance of GooglePubSubPublisher.
 func NewGooglePubSubPublisher(pubSubConnection *PubSubConnection) *GooglePubSubPublisher {
 	return &GooglePubSubPublisher{
-		pubSubConnection,
+		pubSubConnection: pubSubConnection,
+		hasher:           sha512.New(),
 	}
 }
 
@@ -27,7 +32,11 @@ func (p *GooglePubSubPublisher) Publish(ctx context.Context, topic string, event
 		return NewPublishResult(fmt.Errorf("marshal: %w", err))
 	}
 
-	return p.pubSubConnection.Publish(ctx, topic, body, strings.Join(event.PrimaryKey, "-"))
+	p.hasher.Reset()
+	p.hasher.Write([]byte(strings.Join(event.PrimaryKey, "-")))
+	orderingKey := hex.EncodeToString(p.hasher.Sum(nil))
+
+	return p.pubSubConnection.Publish(ctx, topic, body, orderingKey)
 }
 
 func (p *GooglePubSubPublisher) Flush(topic string) {

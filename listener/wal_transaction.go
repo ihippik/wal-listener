@@ -257,6 +257,7 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		event.Data = data
 		event.DataOld = dataOld
 		event.EventTime = *w.CommitTime
+		event.PrimaryKey = nil
 
 		for _, val := range item.NewColumns {
 			if val.isKey {

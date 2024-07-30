@@ -77,6 +77,7 @@ type ExcludeStruct struct {
 }
 
 type SSLStruct struct {
+	ServerName string
 	SkipVerify bool
 }
 

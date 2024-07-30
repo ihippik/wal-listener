@@ -27,6 +27,7 @@ func initPgxConnections(cfg *config.DatabaseCfg, logger *slog.Logger) (*pgx.Conn
 
 	if cfg.SSL != nil {
 		pgxConf.TLSConfig = &tls.Config{
+			ServerName:         cfg.SSL.ServerName,
 			InsecureSkipVerify: cfg.SSL.SkipVerify,
 		}
 	}
