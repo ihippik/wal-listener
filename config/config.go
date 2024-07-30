@@ -73,7 +73,8 @@ type IncludeStruct struct {
 }
 
 type ExcludeStruct struct {
-	Tables []string
+	Tables  []string
+	Columns []string
 }
 
 type SSLStruct struct {

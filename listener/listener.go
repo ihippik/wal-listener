@@ -323,7 +323,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 		}
 	}()
 
-	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude.Tables)
+	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude.Tables, l.cfg.Listener.Exclude.Columns)
 
 	group, ctx := errgroup.WithContext(ctx)
 	messageChan := make(chan *pgx.ReplicationMessage, 100)
