@@ -449,7 +449,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 					l.log.Warn("failed to publish message", slog.Any("error", err), slog.String("subjectName", subjectName), slog.String("table", event.Table), slog.String("action", event.Action))
 				} else {
 					l.monitor.IncPublishedEvents(subjectName, event.Table)
-					l.log.Info(
+					l.log.Debug(
 						"event was sent",
 						slog.String("subject", subjectName),
 						slog.String("action", event.Action),
