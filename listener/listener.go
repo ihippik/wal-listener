@@ -335,6 +335,21 @@ func (l *Listener) Stream(ctx context.Context) error {
 	defer close(resultChan)
 
 	group.Go(func() error {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				l.log.Warn("stream: context canceled", "err", ctx.Err())
+				return nil
+			case <-ticker.C:
+				l.log.Info("channel status", slog.Int("messageChan", len(messageChan)), slog.Int("eventsChan", len(eventsChan)), slog.Int("resultChan", len(resultChan)))
+			}
+		}
+	})
+
+	group.Go(func() error {
 		for {
 			if err := ctx.Err(); err != nil {
 				l.log.Warn("stream: context canceled", "err", err)
