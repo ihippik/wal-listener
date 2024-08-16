@@ -328,7 +328,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 	group, ctx := errgroup.WithContext(ctx)
 	messageChan := make(chan *pgx.ReplicationMessage, 200)
 	eventsChan := make(chan *messageAndEvents, 200)
-	resultChan := make(chan *eventAndPublishResult, 2000)
+	resultChan := make(chan *eventAndPublishResult, 20000)
 
 	defer close(messageChan)
 	defer close(eventsChan)
