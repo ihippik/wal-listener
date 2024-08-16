@@ -56,8 +56,8 @@ func (c *PubSubConnection) getTopic(topic string) *pubsub.Topic {
 	t := c.client.TopicInProject(topic, c.projectID)
 	t.EnableMessageOrdering = c.enableOrdering
 	t.PublishSettings.ByteThreshold = 8 * MB
-	t.PublishSettings.DelayThreshold = 500 * time.Millisecond
-	t.PublishSettings.CountThreshold = 300
+	t.PublishSettings.DelayThreshold = 250 * time.Millisecond
+	t.PublishSettings.CountThreshold = 150
 
 	c.topics[topic] = t
 
