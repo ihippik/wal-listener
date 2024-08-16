@@ -432,6 +432,8 @@ func (l *Listener) Stream(ctx context.Context) error {
 		}
 	})
 
+	var latestWalStart atomic.Uint64
+
 	group.Go(func() error {
 		for {
 			select {
@@ -461,17 +463,37 @@ func (l *Listener) Stream(ctx context.Context) error {
 				tx.pool.Put(event)
 
 				if msg != nil {
-					if msg.WalMessage.WalStart > l.readLSN() {
-						if err := l.AckWalMessage(msg.WalMessage.WalStart); err != nil {
-							l.monitor.IncProblematicEvents(problemKindAck)
-							return fmt.Errorf("ack: %w", err)
-						}
-
-						l.log.Debug("ack WAL message", slog.Uint64("lsn", l.readLSN()))
+					// We do not need to compare and swap here as there's only one thread
+					// writing to this value
+					latest := latestWalStart.Load()
+					if msg.WalMessage.WalStart > latest {
+						latestWalStart.Store(msg.WalMessage.WalStart)
 					}
 				}
 			}
 
+		}
+	})
+
+	group.Go(func() error {
+		for {
+			timer := time.NewTimer(500 * time.Millisecond)
+
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil
+			case <-timer.C:
+				latest := latestWalStart.Load()
+				if latest > l.readLSN() {
+					if err := l.AckWalMessage(latest); err != nil {
+						l.monitor.IncProblematicEvents(problemKindAck)
+						return fmt.Errorf("ack: %w", err)
+					}
+
+					l.log.Debug("ack WAL message", slog.Uint64("lsn", l.readLSN()))
+				}
+			}
 		}
 	})
 
