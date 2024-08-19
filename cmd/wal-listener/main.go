@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
+	"runtime/pprof"
 	"syscall"
 
 	scfg "github.com/ihippik/config"
@@ -54,6 +56,32 @@ func main() {
 			}
 
 			logger := scfg.InitSlog(cfg.Logger, version, cfg.Monitoring.SentryDSN != "")
+
+			memSnapshotSignals := make(chan os.Signal, 1)
+			signal.Notify(memSnapshotSignals, syscall.SIGUSR2)
+
+			go func() {
+				select {
+				case <-ctx.Done():
+					return
+				case <-memSnapshotSignals:
+					logger.Info("SIGUSR2 received, generating heap snapshot")
+
+					memProfile, err := os.Create("mem.pb.gz")
+					if err != nil {
+						logger.Error("cannot create heap profile file", "err", err.Error())
+					}
+
+					runtime.GC()
+
+					err = pprof.WriteHeapProfile(memProfile)
+					if err != nil {
+						logger.Error("cannot write heap profile", "err", err.Error())
+					}
+
+					memProfile.Close()
+				}
+			}()
 
 			go scfg.InitMetrics(cfg.Monitoring.PromAddr, logger)
 
