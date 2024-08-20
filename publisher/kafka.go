@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/IBM/sarama"
-	"github.com/goccy/go-json"
 
 	"github.com/ihippik/wal-listener/v2/config"
 )

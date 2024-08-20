@@ -2,10 +2,10 @@ package publisher
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
-	"github.com/goccy/go-json"
 	"github.com/nats-io/nats.go"
 )
 

@@ -4,11 +4,10 @@ import (
 	"context"
 	"crypto/sha512"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash"
 	"strings"
-
-	"github.com/goccy/go-json"
 )
 
 // GooglePubSubPublisher represent Pub/Sub publisher.

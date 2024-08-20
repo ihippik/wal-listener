@@ -7,7 +7,6 @@ require (
 	github.com/IBM/sarama v1.43.0
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/avast/retry-go/v4 v4.6.0
-	github.com/goccy/go-json v0.10.2
 	github.com/google/uuid v1.6.0
 	github.com/ihippik/config v0.1.1
 	github.com/jackc/pgx v3.6.2+incompatible
