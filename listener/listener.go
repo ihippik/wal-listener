@@ -326,9 +326,9 @@ func (l *Listener) Stream(ctx context.Context) error {
 	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude.Tables, l.cfg.Listener.Exclude.Columns)
 
 	group, ctx := errgroup.WithContext(ctx)
-	messageChan := make(chan *pgx.ReplicationMessage, 200)
-	eventsChan := make(chan *messageAndEvents, 200)
-	resultChan := make(chan *eventAndPublishResult, 20000)
+	messageChan := make(chan *pgx.ReplicationMessage, 20_000)
+	eventsChan := make(chan *messageAndEvents, 20_000)
+	resultChan := make(chan *eventAndPublishResult, 20_000)
 
 	defer close(messageChan)
 	defer close(eventsChan)
