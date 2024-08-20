@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/ihippik/wal-listener/v2/config"
 	"github.com/ihippik/wal-listener/v2/publisher"
 )
 
@@ -43,12 +44,11 @@ type WalTransaction struct {
 	CommitTime *time.Time
 
 	includeTableMap map[string][]string
-	excludeTables   []string
-	excludeColumns  []string
+	excludes        config.ExcludeStruct
 }
 
 // NewWalTransaction create and initialize new WAL transaction.
-func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor, includeTableMap map[string][]string, excludeTables, excludeColumns []string) *WalTransaction {
+func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor, includeTableMap map[string][]string, excludes config.ExcludeStruct) *WalTransaction {
 	const aproxData = 300
 
 	return &WalTransaction{
@@ -58,8 +58,7 @@ func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMon
 		RelationStore:   make(map[int32]RelationData),
 		Actions:         make([]ActionData, 0, aproxData),
 		includeTableMap: includeTableMap,
-		excludeTables:   excludeTables,
-		excludeColumns:  excludeColumns,
+		excludes:        excludes,
 	}
 }
 
@@ -189,6 +188,10 @@ func (w *WalTransaction) CreateActionData(
 		Kind:   kind,
 	}
 
+	if inArray(w.excludes.Schemas, rel.Schema) || inArray(w.excludes.Tables, rel.Table) {
+		return a, nil
+	}
+
 	oldColumns := make([]Column, 0, len(oldRows))
 
 	for num, row := range oldRows {
@@ -234,7 +237,7 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 			break
 		}
 
-		if inArray(w.excludeTables, item.Table) {
+		if inArray(w.excludes.Schemas, item.Schema) || inArray(w.excludes.Tables, item.Table) {
 			w.skipItem(item)
 			continue
 		}
@@ -242,7 +245,7 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		dataOld := make(map[string]any, len(item.OldColumns))
 
 		for _, val := range item.OldColumns {
-			if inArray(w.excludeColumns, val.name) {
+			if inArray(w.excludes.Columns, val.name) {
 				continue
 			}
 			dataOld[val.name] = val.value
@@ -253,7 +256,7 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		var primaryKey []string
 
 		for _, val := range item.NewColumns {
-			if inArray(w.excludeColumns, val.name) {
+			if inArray(w.excludes.Columns, val.name) {
 				continue
 			}
 			data[val.name] = val.value

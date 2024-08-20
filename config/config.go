@@ -73,6 +73,7 @@ type IncludeStruct struct {
 }
 
 type ExcludeStruct struct {
+	Schemas []string
 	Tables  []string
 	Columns []string
 }

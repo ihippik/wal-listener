@@ -323,7 +323,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 		}
 	}()
 
-	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude.Tables, l.cfg.Listener.Exclude.Columns)
+	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude)
 
 	group, ctx := errgroup.WithContext(ctx)
 	messageChan := make(chan *pgx.ReplicationMessage, 20_000)
@@ -406,11 +406,28 @@ func (l *Listener) Stream(ctx context.Context) error {
 			case object := <-eventsChan:
 				events, msg := object.events, object.msg
 
+				if len(events) == 0 {
+					resultChan <- &eventAndPublishResult{
+						subjectName: "",
+						event:       nil,
+						result:      nil,
+						msg:         msg,
+					}
+				}
+
 				for idx, event := range events {
 					subjectName := event.SubjectName(l.cfg)
 					topicSet[subjectName] = true
 
 					result := l.publisher.Publish(ctx, subjectName, event)
+					l.log.Debug(
+						"sending event",
+						slog.String("subject", subjectName),
+						slog.String("action", event.Action),
+						slog.String("schema", event.Schema),
+						slog.String("table", event.Table),
+						slog.Uint64("lsn", l.readLSN()),
+					)
 
 					// Include the message on the last event of the batch
 					if idx == len(events)-1 {
@@ -443,24 +460,26 @@ func (l *Listener) Stream(ctx context.Context) error {
 			case object := <-resultChan:
 				subjectName, result, event, msg := object.subjectName, object.result, object.event, object.msg
 
-				_, err := result.Get(ctx)
-				if err != nil {
-					// Only warn on publish failures, but continue to process and ack messages
-					// this runs the risk of losing data, but this it is more important to keep processing WAL messages in the meantime
-					l.monitor.IncProblematicEvents(problemKindPublish)
-					l.log.Warn("failed to publish message", slog.Any("error", err), slog.String("subjectName", subjectName), slog.String("table", event.Table), slog.String("action", event.Action))
-				} else {
-					l.monitor.IncPublishedEvents(subjectName, event.Table)
-					l.log.Debug(
-						"event was sent",
-						slog.String("subject", subjectName),
-						slog.String("action", event.Action),
-						slog.String("table", event.Table),
-						slog.Uint64("lsn", l.readLSN()),
-					)
+				if result != nil {
+					_, err := result.Get(ctx)
+					if err != nil {
+						// Only warn on publish failures, but continue to process and ack messages
+						// this runs the risk of losing data, but this it is more important to keep processing WAL messages in the meantime
+						l.monitor.IncProblematicEvents(problemKindPublish)
+						l.log.Warn("failed to publish message", slog.Any("error", err), slog.String("subjectName", subjectName), slog.String("table", event.Table), slog.String("action", event.Action))
+					} else {
+						l.monitor.IncPublishedEvents(subjectName, event.Table)
+						l.log.Debug(
+							"event was sent",
+							slog.String("subject", subjectName),
+							slog.String("action", event.Action),
+							slog.String("schema", event.Schema),
+							slog.String("table", event.Table),
+							slog.Uint64("lsn", l.readLSN()),
+						)
+					}
+					tx.pool.Put(event)
 				}
-
-				tx.pool.Put(event)
 
 				if msg != nil {
 					// We do not need to compare and swap here as there's only one thread
