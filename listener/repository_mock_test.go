@@ -31,3 +31,8 @@ func (r *repositoryMock) NewStandbyStatus(walPositions ...uint64) (status *pgx.S
 	args := r.Called(walPositions)
 	return args.Get(0).(*pgx.StandbyStatus), args.Error(1)
 }
+
+func (r *repositoryMock) IsReplicationActive(slotName string) (bool, error) {
+	args := r.Called(slotName)
+	return args.Bool(0), args.Error(1)
+}

@@ -10,4 +10,5 @@ var (
 	errEmptyWALMessage      = errors.New("empty WAL message")
 	errUnknownMessageType   = errors.New("unknown message type")
 	errRelationNotFound     = errors.New("relation not found")
+	errReplDidNotStart      = errors.New("replication did not start")
 )
