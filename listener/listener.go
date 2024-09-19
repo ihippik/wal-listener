@@ -46,6 +46,7 @@ type repository interface {
 	NewStandbyStatus(walPositions ...uint64) (status *pgx.StandbyStatus, err error)
 	IsAlive() bool
 	Close() error
+	IsReplicationActive(slotName string) (bool, error)
 }
 
 type monitor interface {
@@ -201,6 +202,11 @@ func (l *Listener) Process(ctx context.Context) error {
 		logger.Info("new slot was created", slog.String("slot", l.cfg.Listener.SlotName))
 	} else {
 		logger.Info("slot already exists, LSN updated")
+	}
+
+	if replicationActive, err := l.repository.IsReplicationActive(l.cfg.Listener.SlotName); err != nil || replicationActive {
+		l.log.Error("Replication seems to already be alive or unable to check it.")
+		return errReplDidNotStart
 	}
 
 	group := new(errgroup.Group)

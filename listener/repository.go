@@ -54,3 +54,17 @@ func (r RepositoryImpl) IsAlive() bool {
 func (r RepositoryImpl) Close() error {
 	return r.conn.Close()
 }
+
+// IsReplicationActive returns true if the replication slot is already active, false otherwise.
+func (r RepositoryImpl) IsReplicationActive(slotName string) (bool, error) {
+	var activePID int
+
+	err := r.conn.QueryRow("SELECT active_pid FROM pg_replication_slots WHERE slot_name=$1 AND active=true;", slotName).
+		Scan(&activePID)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+
+	return true, err
+}
