@@ -32,7 +32,7 @@ func TestListener_slotIsExists(t *testing.T) {
 	repo := new(repositoryMock)
 
 	setGetSlotLSN := func(slotName, lsn string, err error) {
-		repo.On("GetSlotLSN", slotName).
+		repo.On("GetSlotLSN", mock.Anything, slotName).
 			Return(lsn, err).
 			Once()
 	}
@@ -103,7 +103,7 @@ func TestListener_slotIsExists(t *testing.T) {
 				repository: repo,
 			}
 
-			got, err := w.slotIsExists()
+			got, err := w.slotIsExists(context.Background())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("slotIsExists() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -769,11 +769,11 @@ func TestListener_Process(t *testing.T) {
 	pub := new(publisherMock)
 
 	setCreatePublication := func(name string, err error) {
-		repo.On("CreatePublication", name).Return(err).Once()
+		repo.On("CreatePublication", mock.Anything, name).Return(err).Once()
 	}
 
 	setGetSlotLSN := func(slotName string, lsn string, err error) {
-		repo.On("GetSlotLSN", slotName).Return(lsn, err).Once()
+		repo.On("GetSlotLSN", mock.Anything, slotName).Return(lsn, err).Once()
 	}
 
 	setStartReplication := func(
@@ -817,6 +817,10 @@ func TestListener_Process(t *testing.T) {
 		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond)
 	}
 
+	setIsReplicationActive := func(slot string, res bool, err error) {
+		repo.On("IsReplicationActive", mock.Anything, slot).Return(res, err)
+	}
+
 	tests := []struct {
 		name    string
 		cfg     *config.Config
@@ -839,6 +843,8 @@ func TestListener_Process(t *testing.T) {
 			},
 			setup: func() {
 				ctx, _ = context.WithTimeout(ctx, time.Millisecond*200)
+
+				setIsReplicationActive("slot1", false, nil)
 
 				setNewStandbyStatus([]uint64{1099511628288}, &pgx.StandbyStatus{
 					WalWritePosition: 10,

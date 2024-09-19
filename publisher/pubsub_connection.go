@@ -59,9 +59,7 @@ func (c *PubSubConnection) Publish(ctx context.Context, topic string, data []byt
 	t := c.getTopic(topic)
 	defer t.Flush()
 
-	var res *pubsub.PublishResult
-
-	res = t.Publish(ctx, &pubsub.Message{
+	res := t.Publish(ctx, &pubsub.Message{
 		Data: data,
 	})
 
