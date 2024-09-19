@@ -1,5 +1,5 @@
 # Dependencies Stage
-FROM golang:1.22.4-alpine AS base
+FROM golang:1.23.1-alpine AS base
 LABEL maintainer="Konstantin Makarov <hippik80@gmail.com>"
 
 WORKDIR /listener

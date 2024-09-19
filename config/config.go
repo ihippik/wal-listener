@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/asaskevich/govalidator"
@@ -74,15 +75,22 @@ func (c Config) Validate() error {
 
 // InitConfig load config from file.
 func InitConfig(path string) (*Config, error) {
+	const envPrefix = "WAL"
+
 	var conf Config
 
-	viper.SetConfigFile(path)
+	vp := viper.New()
 
-	if err := viper.ReadInConfig(); err != nil {
+	vp.SetEnvPrefix(envPrefix)
+	vp.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	vp.AutomaticEnv()
+	vp.SetConfigFile(path)
+
+	if err := vp.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("error reading config: %w", err)
 	}
 
-	if err := viper.Unmarshal(&conf); err != nil {
+	if err := vp.Unmarshal(&conf); err != nil {
 		return nil, fmt.Errorf("unable to decode into config struct: %w", err)
 	}
 
