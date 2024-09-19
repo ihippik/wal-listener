@@ -120,6 +120,9 @@ monitoring:
   sentryDSN: "dsn string"
   promAddr: ":2112"
 ```
+We are using [Viper;](https://github.com/spf13/viper) it means you can override each value via env variables with `WAL_` prefix.
+
+_for instance: `WAL_DATABASE_PORT=5433`_
 
 ## Monitoring
 
