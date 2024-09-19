@@ -378,6 +378,7 @@ func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessa
 
 func (l *Listener) processHeartBeat(msg *pgx.ReplicationMessage) {
 	if msg.ServerHeartbeat == nil {
+		l.log.Debug("empty server heartbeat message")
 		return
 	}
 
@@ -386,6 +387,10 @@ func (l *Listener) processHeartBeat(msg *pgx.ReplicationMessage) {
 		slog.Uint64("server_wal_end", msg.ServerHeartbeat.ServerWalEnd),
 		slog.Uint64("server_time", msg.ServerHeartbeat.ServerTime),
 	)
+
+	if msg.ServerHeartbeat.ServerWalEnd > l.readLSN() {
+		l.setLSN(msg.ServerHeartbeat.ServerWalEnd)
+	}
 
 	if msg.ServerHeartbeat.ReplyRequested == 1 {
 		l.log.Debug("status requested")
