@@ -41,12 +41,12 @@ type replication interface {
 }
 
 type repository interface {
-	CreatePublication(name string) error
-	GetSlotLSN(slotName string) (string, error)
+	CreatePublication(ctx context.Context, name string) error
+	GetSlotLSN(ctx context.Context, slotName string) (string, error)
 	NewStandbyStatus(walPositions ...uint64) (status *pgx.StandbyStatus, err error)
+	IsReplicationActive(ctx context.Context, slotName string) (bool, error)
 	IsAlive() bool
 	Close() error
-	IsReplicationActive(slotName string) (bool, error)
 }
 
 type monitor interface {
@@ -90,7 +90,7 @@ func NewWalListener(
 	}
 }
 
-// InitHandlers init web handlers for liveness & readiness k8s probes.
+// InitHandlers init web handlers for liveness and readiness k8s probes.
 func (l *Listener) InitHandlers(ctx context.Context) {
 	const defaultTimeout = 500 * time.Millisecond
 
@@ -124,7 +124,7 @@ func (l *Listener) InitHandlers(ctx context.Context) {
 
 const contentTypeTextPlain = "text/plain"
 
-func (l *Listener) liveness(w http.ResponseWriter, r *http.Request) {
+func (l *Listener) liveness(w http.ResponseWriter, _ *http.Request) {
 	var (
 		respCode = http.StatusOK
 		resp     = []byte(`ok`)
@@ -146,7 +146,7 @@ func (l *Listener) liveness(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (l *Listener) readiness(w http.ResponseWriter, r *http.Request) {
+func (l *Listener) readiness(w http.ResponseWriter, _ *http.Request) {
 	var (
 		respCode = http.StatusOK
 		resp     = []byte(`ok`)
@@ -168,7 +168,7 @@ func (l *Listener) readiness(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Process is main service entry point.
+// Process is the main service entry point.
 func (l *Listener) Process(ctx context.Context) error {
 	logger := l.log.With("slot_name", l.cfg.Listener.SlotName)
 
@@ -177,11 +177,11 @@ func (l *Listener) Process(ctx context.Context) error {
 
 	logger.Info("service was started")
 
-	if err := l.repository.CreatePublication(publicationName); err != nil {
+	if err := l.repository.CreatePublication(ctx, publicationName); err != nil {
 		logger.Warn("publication creation was skipped", "err", err)
 	}
 
-	slotIsExists, err := l.slotIsExists()
+	slotIsExists, err := l.slotIsExists(ctx)
 	if err != nil {
 		return fmt.Errorf("slot is exists: %w", err)
 	}
@@ -204,8 +204,12 @@ func (l *Listener) Process(ctx context.Context) error {
 		logger.Info("slot already exists, LSN updated")
 	}
 
-	if replicationActive, err := l.repository.IsReplicationActive(l.cfg.Listener.SlotName); err != nil || replicationActive {
-		l.log.Error("Replication seems to already be alive or unable to check it.")
+	if replicationActive, err := l.repository.IsReplicationActive(ctx, l.cfg.Listener.SlotName); err != nil || replicationActive {
+		l.log.Error(
+			"replication seems to already be alive or unable to check it",
+			slog.String("slot", l.cfg.Listener.SlotName),
+		)
+
 		return errReplDidNotStart
 	}
 
@@ -219,7 +223,7 @@ func (l *Listener) Process(ctx context.Context) error {
 	})
 
 	if err = group.Wait(); err != nil {
-		return err
+		return fmt.Errorf("group: %w", err)
 	}
 
 	return nil
@@ -241,7 +245,7 @@ func (l *Listener) checkConnection(ctx context.Context) error {
 				return fmt.Errorf("repository: %w", errConnectionIsLost)
 			}
 		case <-ctx.Done():
-			l.log.Debug("cgeck connection: context was canceled")
+			l.log.Debug("check connection: context was canceled")
 
 			if err := l.Stop(); err != nil {
 				l.log.Error("failed to stop service", "err", err)
@@ -253,8 +257,8 @@ func (l *Listener) checkConnection(ctx context.Context) error {
 }
 
 // slotIsExists checks whether a slot has already been created and if it has been created uses it.
-func (l *Listener) slotIsExists() (bool, error) {
-	restartLSNStr, err := l.repository.GetSlotLSN(l.cfg.Listener.SlotName)
+func (l *Listener) slotIsExists(ctx context.Context) (bool, error) {
+	restartLSNStr, err := l.repository.GetSlotLSN(ctx, l.cfg.Listener.SlotName)
 	if err != nil {
 		return false, fmt.Errorf("get slot lsn: %w", err)
 	}
@@ -285,8 +289,8 @@ const (
 	problemKindAck     = "ack"
 )
 
-// Stream receive event from PostgreSQL.
-// Accept message, apply filter and  publish it in NATS server.
+// Stream receives event from PostgreSQL.
+// Accept message, apply filter and publish it in NATS server.
 func (l *Listener) Stream(ctx context.Context) error {
 	if err := l.replicator.StartReplication(
 		l.cfg.Listener.SlotName,
@@ -402,7 +406,7 @@ func (l *Listener) processHeartBeat(msg *pgx.ReplicationMessage) {
 		l.log.Debug("status requested")
 
 		if err := l.SendStandbyStatus(); err != nil {
-			l.log.Warn("send standby status: %w", err)
+			l.log.Warn("send standby status", "err", err)
 		}
 	}
 }
@@ -426,7 +430,7 @@ func (l *Listener) Stop() error {
 	return nil
 }
 
-// SendPeriodicHeartbeats send periodic keep alive heartbeats to the server.
+// SendPeriodicHeartbeats send periodic keep living heartbeats to the server.
 func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 	heart := time.NewTicker(l.cfg.Listener.HeartbeatInterval)
 	defer heart.Stop()
