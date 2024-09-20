@@ -2,9 +2,10 @@ package listener
 
 import (
 	"context"
-	"github.com/ihippik/wal-listener/v2/internal/publisher"
 
 	"github.com/stretchr/testify/mock"
+
+	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
 type publisherMock struct {
