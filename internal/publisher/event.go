@@ -5,7 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/ihippik/wal-listener/v2/config"
+
+	"github.com/ihippik/wal-listener/v2/internal/config"
 )
 
 // Event structure for publishing to the NATS server.

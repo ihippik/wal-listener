@@ -1,4 +1,4 @@
-package listener
+package transaction
 
 import (
 	"bytes"
@@ -461,7 +461,7 @@ func TestBinaryParser_getBeginMsg(t *testing.T) {
 func TestBinaryParser_ParseWalMessage(t *testing.T) {
 	type args struct {
 		msg []byte
-		tx  *WalTransaction
+		tx  *WAL
 	}
 
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
@@ -471,7 +471,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 		name    string
 		args    args
 		wantErr bool
-		want    *WalTransaction
+		want    *WAL
 	}{
 		{
 			name:    "empty data",
@@ -487,9 +487,9 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 0, 0, 0, 0, 0,
 					0, 0, 0, 5,
 				},
-				tx: NewWalTransaction(logger, nil, metrics),
+				tx: NewWAL(logger, nil, metrics),
 			},
-			want: &WalTransaction{
+			want: &WAL{
 				pool:          nil,
 				log:           logger,
 				LSN:           7,
@@ -510,7 +510,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 0, 0, 0, 0, 8,
 					0, 0, 0, 0, 0, 0, 0, 0,
 				},
-				tx: &WalTransaction{
+				tx: &WAL{
 					log:           logger,
 					LSN:           7,
 					monitor:       metrics,
@@ -518,7 +518,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					RelationStore: make(map[int32]RelationData),
 				},
 			},
-			want: &WalTransaction{
+			want: &WAL{
 				log:           logger,
 				LSN:           7,
 				monitor:       metrics,
@@ -553,7 +553,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 23,
 					0, 0, 0, 1,
 				},
-				tx: &WalTransaction{
+				tx: &WAL{
 					log:           logger,
 					LSN:           3,
 					monitor:       metrics,
@@ -562,7 +562,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					RelationStore: make(map[int32]RelationData),
 				},
 			},
-			want: &WalTransaction{
+			want: &WAL{
 				log:        logger,
 				monitor:    metrics,
 				LSN:        3,
@@ -608,7 +608,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 6,
 					49, 48,
 				},
-				tx: &WalTransaction{
+				tx: &WAL{
 					monitor:    metrics,
 					log:        logger,
 					LSN:        4,
@@ -631,7 +631,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					},
 				},
 			},
-			want: &WalTransaction{
+			want: &WAL{
 				monitor:    metrics,
 				log:        logger,
 				LSN:        4,
@@ -701,7 +701,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 2,
 					56, 48,
 				},
-				tx: &WalTransaction{
+				tx: &WAL{
 					log:        logger,
 					monitor:    metrics,
 					LSN:        4,
@@ -724,7 +724,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					},
 				},
 			},
-			want: &WalTransaction{
+			want: &WAL{
 				monitor:    metrics,
 				log:        logger,
 				LSN:        4,
@@ -792,7 +792,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 2,
 					55, 55,
 				},
-				tx: &WalTransaction{
+				tx: &WAL{
 					monitor:    metrics,
 					log:        logger,
 					LSN:        4,
@@ -815,7 +815,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					},
 				},
 			},
-			want: &WalTransaction{
+			want: &WAL{
 				monitor:    metrics,
 				log:        logger,
 				LSN:        4,
@@ -868,7 +868,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 2,
 					55, 55,
 				},
-				tx: &WalTransaction{
+				tx: &WAL{
 					monitor:    metrics,
 					log:        logger,
 					LSN:        4,
@@ -891,7 +891,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					},
 				},
 			},
-			want: &WalTransaction{
+			want: &WAL{
 				monitor:    metrics,
 				log:        logger,
 				LSN:        4,

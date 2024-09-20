@@ -8,8 +8,8 @@ import (
 	"github.com/jackc/pgx"
 	"github.com/nats-io/nats.go"
 
-	"github.com/ihippik/wal-listener/v2/config"
-	"github.com/ihippik/wal-listener/v2/publisher"
+	"github.com/ihippik/wal-listener/v2/internal/config"
+	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
 // initPgxConnections initialise db and replication connections.

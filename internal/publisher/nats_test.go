@@ -3,7 +3,7 @@ package publisher
 import (
 	"testing"
 
-	"github.com/ihippik/wal-listener/v2/config"
+	"github.com/ihippik/wal-listener/v2/internal/config"
 )
 
 func TestEvent_GetSubjectName(t *testing.T) {

@@ -11,8 +11,9 @@ import (
 	scfg "github.com/ihippik/config"
 	"github.com/urfave/cli/v2"
 
-	"github.com/ihippik/wal-listener/v2/config"
-	"github.com/ihippik/wal-listener/v2/listener"
+	"github.com/ihippik/wal-listener/v2/internal/config"
+	"github.com/ihippik/wal-listener/v2/internal/listener"
+	"github.com/ihippik/wal-listener/v2/internal/listener/transaction"
 )
 
 func main() {
@@ -73,19 +74,19 @@ func main() {
 				}
 			}()
 
-			service := listener.NewWalListener(
+			svc := listener.NewWalListener(
 				cfg,
 				logger,
 				listener.NewRepository(conn),
 				rConn,
 				pub,
-				listener.NewBinaryParser(logger, binary.BigEndian),
+				transaction.NewBinaryParser(logger, binary.BigEndian),
 				config.NewMetrics(),
 			)
 
-			go service.InitHandlers(ctx)
+			go svc.InitHandlers(ctx)
 
-			if err := service.Process(ctx); err != nil {
+			if err = svc.Process(ctx); err != nil {
 				slog.Error("service process failed", "err", err.Error())
 			}
 

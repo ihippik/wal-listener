@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
-	"github.com/ihippik/wal-listener/v2/publisher"
+	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
 type publisherMock struct {

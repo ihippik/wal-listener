@@ -2,6 +2,7 @@ package listener
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -15,8 +16,9 @@ import (
 	"github.com/jackc/pgx"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/ihippik/wal-listener/v2/config"
-	"github.com/ihippik/wal-listener/v2/publisher"
+	"github.com/ihippik/wal-listener/v2/internal/config"
+	tx "github.com/ihippik/wal-listener/v2/internal/listener/transaction"
+	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
 // Logical decoding plugin.
@@ -27,7 +29,7 @@ type eventPublisher interface {
 }
 
 type parser interface {
-	ParseWalMessage([]byte, *WalTransaction) error
+	ParseWalMessage([]byte, *tx.WAL) error
 }
 
 type replication interface {
@@ -68,6 +70,12 @@ type Listener struct {
 	lsn        uint64
 	isAlive    atomic.Bool
 }
+
+var (
+	errReplConnectionIsLost = errors.New("replication connection to postgres is lost")
+	errConnectionIsLost     = errors.New("db connection to postgres is lost")
+	errReplDidNotStart      = errors.New("replication did not start")
+)
 
 // NewWalListener create and initialize new service instance.
 func NewWalListener(
@@ -310,7 +318,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 		},
 	}
 
-	tx := NewWalTransaction(l.log, pool, l.monitor)
+	txWAL := tx.NewWAL(l.log, pool, l.monitor)
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -328,7 +336,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 			continue
 		}
 
-		if err = l.processMessage(ctx, msg, tx); err != nil {
+		if err = l.processMessage(ctx, msg, txWAL); err != nil {
 			return fmt.Errorf("process message: %w", err)
 		}
 
@@ -336,7 +344,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 	}
 }
 
-func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessage, tx *WalTransaction) error {
+func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessage, txWAL *tx.WAL) error {
 	if msg.WalMessage == nil {
 		l.log.Debug("empty wal-message")
 		return nil
@@ -344,13 +352,13 @@ func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessa
 
 	l.log.Debug("WAL message has been received", slog.Uint64("wal", msg.WalMessage.WalStart))
 
-	if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx); err != nil {
+	if err := l.parser.ParseWalMessage(msg.WalMessage.WalData, txWAL); err != nil {
 		l.monitor.IncProblematicEvents(problemKindParse)
 		return fmt.Errorf("parse: %w", err)
 	}
 
-	if tx.CommitTime != nil {
-		for event := range tx.CreateEventsWithFilter(ctx, l.cfg.Listener.Filter.Tables) {
+	if txWAL.CommitTime != nil {
+		for event := range txWAL.CreateEventsWithFilter(ctx, l.cfg.Listener.Filter.Tables) {
 			subjectName := event.SubjectName(l.cfg)
 
 			if err := l.publisher.Publish(ctx, subjectName, event); err != nil {
@@ -368,10 +376,10 @@ func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessa
 				slog.Uint64("lsn", l.readLSN()),
 			)
 
-			tx.pool.Put(event)
+			txWAL.RetrieveEvent(event)
 		}
 
-		tx.Clear()
+		txWAL.Clear()
 	}
 
 	if msg.WalMessage.WalStart > l.readLSN() {

@@ -1,8 +1,9 @@
-package listener
+package transaction
 
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -16,6 +17,12 @@ type BinaryParser struct {
 	buffer    *bytes.Buffer
 }
 
+var (
+	ErrEmptyWALMessage    = errors.New("empty WAL message")
+	ErrMessageLost        = errors.New("messages are lost")
+	ErrUnknownMessageType = errors.New("unknown message type")
+)
+
 // NewBinaryParser create instance of binary parser.
 func NewBinaryParser(logger *slog.Logger, byteOrder binary.ByteOrder) *BinaryParser {
 	return &BinaryParser{
@@ -25,9 +32,9 @@ func NewBinaryParser(logger *slog.Logger, byteOrder binary.ByteOrder) *BinaryPar
 }
 
 // ParseWalMessage parse postgres WAL message.
-func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
+func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WAL) error {
 	if len(msg) == 0 {
-		return errEmptyWALMessage
+		return ErrEmptyWALMessage
 	}
 
 	p.msgType = msg[0]
@@ -55,7 +62,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		)
 
 		if tx.LSN > 0 && tx.LSN != commit.LSN {
-			return fmt.Errorf("commit: %w", errMessageLost)
+			return fmt.Errorf("commit: %w", ErrMessageLost)
 		}
 
 		tx.CommitTime = &commit.Timestamp
@@ -71,7 +78,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		)
 
 		if tx.LSN == 0 {
-			return fmt.Errorf("commit: %w", errMessageLost)
+			return fmt.Errorf("commit: %w", ErrMessageLost)
 		}
 
 		rd := RelationData{
@@ -80,12 +87,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		}
 
 		for _, rf := range relation.Columns {
-			c := Column{
-				log:       p.log,
-				name:      rf.Name,
-				valueType: int(rf.TypeID),
-				isKey:     rf.Key,
-			}
+			c := InitColumn(p.log, rf.Name, nil, int(rf.TypeID), rf.Key)
 			rd.Columns = append(rd.Columns, c)
 		}
 
@@ -147,7 +149,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		tx.Actions = append(tx.Actions, action)
 	default:
-		return fmt.Errorf("%w : %s", errUnknownMessageType, []byte{p.msgType})
+		return fmt.Errorf("%w : %s", ErrUnknownMessageType, []byte{p.msgType})
 	}
 
 	return nil

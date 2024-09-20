@@ -15,8 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/ihippik/wal-listener/v2/config"
-	"github.com/ihippik/wal-listener/v2/publisher"
+	"github.com/ihippik/wal-listener/v2/internal/config"
+	tx "github.com/ihippik/wal-listener/v2/internal/listener/transaction"
+	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
 var (
@@ -467,7 +468,7 @@ func TestListener_Stream(t *testing.T) {
 		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond)
 	}
 
-	setParseWalMessageOnce := func(msg []byte, tx *WalTransaction, err error) {
+	setParseWalMessageOnce := func(msg []byte, tx *tx.WAL, err error) {
 		prs.On("ParseWalMessage", msg, tx).Return(err)
 	}
 
@@ -560,15 +561,7 @@ func TestListener_Stream(t *testing.T) {
 
 				setParseWalMessageOnce(
 					[]byte(`some bytes`),
-					&WalTransaction{
-						monitor:       metrics,
-						log:           logger,
-						LSN:           0,
-						BeginTime:     nil,
-						CommitTime:    nil,
-						RelationStore: make(map[int32]RelationData),
-						Actions:       nil,
-					},
+					tx.NewWAL(logger, nil, metrics),
 					nil,
 				)
 
