@@ -87,12 +87,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WAL) error {
 		}
 
 		for _, rf := range relation.Columns {
-			c := Column{
-				log:       p.log,
-				name:      rf.Name,
-				valueType: int(rf.TypeID),
-				isKey:     rf.Key,
-			}
+			c := InitColumn(p.log, rf.Name, nil, int(rf.TypeID), rf.Key)
 			rd.Columns = append(rd.Columns, c)
 		}
 

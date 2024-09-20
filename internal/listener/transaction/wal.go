@@ -3,13 +3,13 @@ package transaction
 import (
 	"context"
 	"errors"
-	"github.com/ihippik/wal-listener/v2/internal/publisher"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
 type monitor interface {
@@ -79,12 +79,13 @@ func (w *WAL) CreateActionData(
 	oldColumns := make([]Column, 0, len(oldRows))
 
 	for num, row := range oldRows {
-		column := Column{
-			log:       w.log,
-			name:      rel.Columns[num].name,
-			valueType: rel.Columns[num].valueType,
-			isKey:     rel.Columns[num].isKey,
-		}
+		column := InitColumn(
+			w.log,
+			rel.Columns[num].name,
+			nil,
+			rel.Columns[num].valueType,
+			rel.Columns[num].isKey,
+		)
 
 		column.AssertValue(row.Value)
 		oldColumns = append(oldColumns, column)
@@ -95,12 +96,13 @@ func (w *WAL) CreateActionData(
 	newColumns := make([]Column, 0, len(newRows))
 
 	for num, row := range newRows {
-		column := Column{
-			log:       w.log,
-			name:      rel.Columns[num].name,
-			valueType: rel.Columns[num].valueType,
-			isKey:     rel.Columns[num].isKey,
-		}
+		column := InitColumn(
+			w.log,
+			rel.Columns[num].name,
+			nil,
+			rel.Columns[num].valueType,
+			rel.Columns[num].isKey,
+		)
 		column.AssertValue(row.Value)
 		newColumns = append(newColumns, column)
 	}

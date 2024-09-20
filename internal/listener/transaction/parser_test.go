@@ -3,7 +3,6 @@ package transaction
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/ihippik/wal-listener/v2/listener"
 	"io"
 	"log/slog"
 	"reflect"
@@ -466,7 +465,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	metrics := new(listener.monitorMock)
+	metrics := new(monitorMock)
 
 	tests := []struct {
 		name    string

@@ -48,6 +48,11 @@ type Column struct {
 	isKey     bool
 }
 
+// InitColumn create new Column instance with data.s
+func InitColumn(log *slog.Logger, name string, value any, valueType int, isKey bool) Column {
+	return Column{log: log, name: name, value: value, valueType: valueType, isKey: isKey}
+}
+
 // AssertValue converts bytes to a specific type depending
 // on the type of this data in the database table.
 func (c *Column) AssertValue(src []byte) {
