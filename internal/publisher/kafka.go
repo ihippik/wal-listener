@@ -5,12 +5,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"github.com/ihippik/wal-listener/v2/internal/config"
 	"os"
 
 	"github.com/IBM/sarama"
 	"github.com/goccy/go-json"
-
-	"github.com/ihippik/wal-listener/v2/config"
 )
 
 // KafkaPublisher represent event publisher with Kafka broker.

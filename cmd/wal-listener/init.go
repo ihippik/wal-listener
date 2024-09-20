@@ -3,13 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/jackc/pgx"
 	"github.com/nats-io/nats.go"
+	"log/slog"
 
-	"github.com/ihippik/wal-listener/v2/config"
-	"github.com/ihippik/wal-listener/v2/publisher"
+	"github.com/ihippik/wal-listener/v2/internal/config"
+	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
 // initPgxConnections initialise db and replication connections.

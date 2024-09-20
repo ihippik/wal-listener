@@ -2,6 +2,7 @@ package listener
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -15,8 +16,9 @@ import (
 	"github.com/jackc/pgx"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/ihippik/wal-listener/v2/config"
-	"github.com/ihippik/wal-listener/v2/publisher"
+	"github.com/ihippik/wal-listener/v2/internal/config"
+	"github.com/ihippik/wal-listener/v2/internal/listener/transaction"
+	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
 // Logical decoding plugin.
@@ -27,7 +29,7 @@ type eventPublisher interface {
 }
 
 type parser interface {
-	ParseWalMessage([]byte, *WalTransaction) error
+	ParseWalMessage([]byte, *transaction.WAL) error
 }
 
 type replication interface {
@@ -68,6 +70,13 @@ type Listener struct {
 	lsn        uint64
 	isAlive    atomic.Bool
 }
+
+// Variable with connection errors.
+var (
+	errReplConnectionIsLost = errors.New("replication connection to postgres is lost")
+	errConnectionIsLost     = errors.New("db connection to postgres is lost")
+	errReplDidNotStart      = errors.New("replication did not start")
+)
 
 // NewWalListener create and initialize new service instance.
 func NewWalListener(
@@ -310,7 +319,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 		},
 	}
 
-	tx := NewWalTransaction(l.log, pool, l.monitor)
+	tx := transaction.NewWAL(l.log, pool, l.monitor)
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -336,7 +345,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 	}
 }
 
-func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessage, tx *WalTransaction) error {
+func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessage, tx *transaction.WAL) error {
 	if msg.WalMessage == nil {
 		l.log.Debug("empty wal-message")
 		return nil
@@ -368,7 +377,7 @@ func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessa
 				slog.Uint64("lsn", l.readLSN()),
 			)
 
-			tx.pool.Put(event)
+			tx.RetrieveEvent(event)
 		}
 
 		tx.Clear()

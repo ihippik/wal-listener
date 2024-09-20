@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/ihippik/wal-listener/v2/internal/config"
+	transaction2 "github.com/ihippik/wal-listener/v2/internal/listener/transaction"
+	"github.com/ihippik/wal-listener/v2/internal/publisher"
 	"io"
 	"log/slog"
 	"reflect"
@@ -15,8 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/ihippik/wal-listener/v2/config"
-	"github.com/ihippik/wal-listener/v2/publisher"
+	"github.com/ihippik/wal-listener/v2/listener/transaction"
 )
 
 var (
@@ -451,7 +453,7 @@ func TestListener_Stream(t *testing.T) {
 	repo := new(repositoryMock)
 	publ := new(publisherMock)
 	repl := new(replicatorMock)
-	prs := new(parserMock)
+	prs := new(transaction.parserMock)
 
 	type fields struct {
 		config     *config.Config
@@ -467,7 +469,7 @@ func TestListener_Stream(t *testing.T) {
 		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond)
 	}
 
-	setParseWalMessageOnce := func(msg []byte, tx *WalTransaction, err error) {
+	setParseWalMessageOnce := func(msg []byte, tx *transaction2.WAL, err error) {
 		prs.On("ParseWalMessage", msg, tx).Return(err)
 	}
 
@@ -560,13 +562,13 @@ func TestListener_Stream(t *testing.T) {
 
 				setParseWalMessageOnce(
 					[]byte(`some bytes`),
-					&WalTransaction{
+					&transaction2.WAL{
 						monitor:       metrics,
 						log:           logger,
 						LSN:           0,
 						BeginTime:     nil,
 						CommitTime:    nil,
-						RelationStore: make(map[int32]RelationData),
+						RelationStore: make(map[int32]transaction2.RelationData),
 						Actions:       nil,
 					},
 					nil,
@@ -763,7 +765,7 @@ func TestListener_Stream(t *testing.T) {
 func TestListener_Process(t *testing.T) {
 	ctx := context.Background()
 	monitor := new(monitorMock)
-	parser := new(parserMock)
+	parser := new(transaction.parserMock)
 	repo := new(repositoryMock)
 	repl := new(replicatorMock)
 	pub := new(publisherMock)
