@@ -361,7 +361,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 				return fmt.Errorf("wait for replication message: %w", err)
 			}
 
-			if msg == nil || msg.WalMessage == nil {
+			if msg == nil {
 				continue
 			}
 
@@ -376,20 +376,22 @@ func (l *Listener) Stream(ctx context.Context) error {
 				l.log.Warn("stream: context canceled", "err", ctx.Err())
 				return nil
 			case msg := <-messageChan:
-				err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx)
-				if err != nil {
-					l.monitor.IncProblematicEvents(problemKindParse)
-					return fmt.Errorf("parse: %w", err)
-				}
-
-				if tx.CommitTime != nil {
-					events := tx.CreateEventsWithFilter(ctx)
-
-					eventsChan <- &messageAndEvents{
-						msg,
-						events,
+				if msg.WalMessage != nil {
+					err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx)
+					if err != nil {
+						l.monitor.IncProblematicEvents(problemKindParse)
+						return fmt.Errorf("parse: %w", err)
 					}
-					tx.Clear()
+
+					if tx.CommitTime != nil {
+						events := tx.CreateEventsWithFilter(ctx)
+
+						eventsChan <- &messageAndEvents{
+							msg,
+							events,
+						}
+						tx.Clear()
+					}
 				}
 
 				l.processHeartBeat(msg)
@@ -490,7 +492,6 @@ func (l *Listener) Stream(ctx context.Context) error {
 					}
 				}
 			}
-
 		}
 	})
 
@@ -529,6 +530,10 @@ func (l *Listener) processHeartBeat(msg *pgx.ReplicationMessage) {
 		slog.Uint64("server_wal_end", msg.ServerHeartbeat.ServerWalEnd),
 		slog.Uint64("server_time", msg.ServerHeartbeat.ServerTime),
 	)
+
+	if msg.ServerHeartbeat.ServerWalEnd > l.readLSN() {
+		l.setLSN(msg.ServerHeartbeat.ServerWalEnd)
+	}
 
 	if msg.ServerHeartbeat.ReplyRequested == 1 {
 		l.log.Debug("status requested")
