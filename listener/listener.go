@@ -402,6 +402,11 @@ func (l *Listener) Stream(ctx context.Context) error {
 						}
 						tx.Clear()
 					}
+				} else if msg.ServerHeartbeat != nil {
+					eventsChan <- &messageAndEvents{
+						msg,
+						nil,
+					}
 				}
 
 				l.processHeartBeat(msg)
@@ -497,8 +502,10 @@ func (l *Listener) Stream(ctx context.Context) error {
 					// We do not need to compare and swap here as there's only one thread
 					// writing to this value
 					latest := latestWalStart.Load()
-					if msg.WalMessage.WalStart > latest {
+					if msg.WalMessage != nil && msg.WalMessage.WalStart > latest {
 						latestWalStart.Store(msg.WalMessage.WalStart)
+					} else if msg.ServerHeartbeat != nil && msg.ServerHeartbeat.ServerWalEnd > latest {
+						latestWalStart.Store(msg.ServerHeartbeat.ServerWalEnd)
 					}
 				}
 			}
@@ -540,10 +547,6 @@ func (l *Listener) processHeartBeat(msg *pgx.ReplicationMessage) {
 		slog.Uint64("server_wal_end", msg.ServerHeartbeat.ServerWalEnd),
 		slog.Uint64("server_time", msg.ServerHeartbeat.ServerTime),
 	)
-
-	if msg.ServerHeartbeat.ServerWalEnd > l.readLSN() {
-		l.setLSN(msg.ServerHeartbeat.ServerWalEnd)
-	}
 
 	if msg.ServerHeartbeat.ReplyRequested == 1 {
 		l.log.Debug("status requested")
