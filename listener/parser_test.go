@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ihippik/wal-listener/v2/config"
 	"github.com/jackc/pgx/pgtype"
 	"github.com/stretchr/testify/assert"
 )
@@ -487,7 +488,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 0, 0, 0, 0, 0,
 					0, 0, 0, 5,
 				},
-				tx: NewWalTransaction(logger, nil, metrics, nil, nil, nil),
+				tx: NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}),
 			},
 			want: &WalTransaction{
 				pool:          nil,

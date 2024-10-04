@@ -1,8 +1,8 @@
 package listener
 
 import (
-	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx"
 )
@@ -18,22 +18,18 @@ func NewRepository(conn *pgx.Conn) *RepositoryImpl {
 }
 
 // GetSlotLSN returns the value of the last offset for a specific slot.
-func (r RepositoryImpl) GetSlotLSN(slotName string) (string, error) {
+func (r RepositoryImpl) GetSlotLSN(slotName string) (*string, error) {
 	var restartLSNStr *string
 
 	err := r.conn.QueryRow("SELECT restart_lsn FROM pg_replication_slots WHERE slot_name=$1;", slotName).
 		Scan(&restartLSNStr)
 
-	if errors.Is(err, pgx.ErrNoRows) || restartLSNStr == nil {
-		return "", nil
-	}
-
-	return *restartLSNStr, err
+	return restartLSNStr, err
 }
 
 // CreatePublication create publication fo all.
 func (r RepositoryImpl) CreatePublication(name string) error {
-	if _, err := r.conn.Exec(`CREATE PUBLICATION "` + name + `" FOR ALL TABLES`); err != nil {
+	if _, err := r.conn.Exec(`CREATE PUBLICATION "` + name + `" FOR ALL TABLES`); err != nil && !strings.Contains("already exists", err.Error()) {
 		return fmt.Errorf("exec: %w", err)
 	}
 

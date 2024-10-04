@@ -2,6 +2,7 @@ package listener
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -44,7 +45,7 @@ type replication interface {
 
 type repository interface {
 	CreatePublication(name string) error
-	GetSlotLSN(slotName string) (string, error)
+	GetSlotLSN(slotName string) (*string, error)
 	NewStandbyStatus(walPositions ...uint64) (status *pgx.StandbyStatus, err error)
 	IsAlive() bool
 	Close() error
@@ -265,16 +266,25 @@ func (l *Listener) checkConnection(ctx context.Context) error {
 // slotIsExists checks whether a slot has already been created and if it has been created uses it.
 func (l *Listener) slotIsExists() (bool, error) {
 	restartLSNStr, err := l.repository.GetSlotLSN(l.cfg.Listener.SlotName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		l.log.Info("slot does not exist", slog.String("slot_name", l.cfg.Listener.SlotName))
+		return false, nil
+	}
+
 	if err != nil {
 		return false, fmt.Errorf("get slot lsn: %w", err)
 	}
 
-	if len(restartLSNStr) == 0 {
-		l.log.Warn("restart LSN not found", slog.String("slot_name", l.cfg.Listener.SlotName))
+	if restartLSNStr == nil {
+		l.log.Error("restart LSN is NULL, dropping replication slot", slog.String("slot_name", l.cfg.Listener.SlotName))
+		err = l.replicator.DropReplicationSlot(l.cfg.Listener.SlotName)
+		if err != nil {
+			return false, fmt.Errorf("drop replication slot: %w", err)
+		}
 		return false, nil
 	}
 
-	lsn, err := pgx.ParseLSN(restartLSNStr)
+	lsn, err := pgx.ParseLSN(*restartLSNStr)
 	if err != nil {
 		return false, fmt.Errorf("parse lsn: %w", err)
 	}
@@ -361,7 +371,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 				return fmt.Errorf("wait for replication message: %w", err)
 			}
 
-			if msg == nil || msg.WalMessage == nil {
+			if msg == nil {
 				continue
 			}
 
@@ -376,20 +386,22 @@ func (l *Listener) Stream(ctx context.Context) error {
 				l.log.Warn("stream: context canceled", "err", ctx.Err())
 				return nil
 			case msg := <-messageChan:
-				err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx)
-				if err != nil {
-					l.monitor.IncProblematicEvents(problemKindParse)
-					return fmt.Errorf("parse: %w", err)
-				}
-
-				if tx.CommitTime != nil {
-					events := tx.CreateEventsWithFilter(ctx)
-
-					eventsChan <- &messageAndEvents{
-						msg,
-						events,
+				if msg.WalMessage != nil {
+					err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx)
+					if err != nil {
+						l.monitor.IncProblematicEvents(problemKindParse)
+						return fmt.Errorf("parse: %w", err)
 					}
-					tx.Clear()
+
+					if tx.CommitTime != nil {
+						events := tx.CreateEventsWithFilter(ctx)
+
+						eventsChan <- &messageAndEvents{
+							msg,
+							events,
+						}
+						tx.Clear()
+					}
 				}
 
 				l.processHeartBeat(msg)
@@ -490,7 +502,6 @@ func (l *Listener) Stream(ctx context.Context) error {
 					}
 				}
 			}
-
 		}
 	})
 
@@ -529,6 +540,10 @@ func (l *Listener) processHeartBeat(msg *pgx.ReplicationMessage) {
 		slog.Uint64("server_wal_end", msg.ServerHeartbeat.ServerWalEnd),
 		slog.Uint64("server_time", msg.ServerHeartbeat.ServerTime),
 	)
+
+	if msg.ServerHeartbeat.ServerWalEnd > l.readLSN() {
+		l.setLSN(msg.ServerHeartbeat.ServerWalEnd)
+	}
 
 	if msg.ServerHeartbeat.ReplyRequested == 1 {
 		l.log.Debug("status requested")
