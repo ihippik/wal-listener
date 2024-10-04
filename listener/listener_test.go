@@ -33,7 +33,7 @@ func TestListener_slotIsExists(t *testing.T) {
 
 	setGetSlotLSN := func(slotName, lsn string, err error) {
 		repo.On("GetSlotLSN", slotName).
-			Return(lsn, err).
+			Return(&lsn, err).
 			Once()
 	}
 	tests := []struct {
@@ -63,7 +63,7 @@ func TestListener_slotIsExists(t *testing.T) {
 				slotName: "myslot",
 			},
 			want:    false,
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name: "invalid lsn",
@@ -801,7 +801,7 @@ func TestListener_Process(t *testing.T) {
 	}
 
 	setGetSlotLSN := func(slotName string, lsn string, err error) {
-		repo.On("GetSlotLSN", slotName).Return(lsn, err).Once()
+		repo.On("GetSlotLSN", slotName).Return(&lsn, err).Once()
 	}
 
 	setStartReplication := func(
@@ -809,7 +809,8 @@ func TestListener_Process(t *testing.T) {
 		slotName string,
 		startLsn uint64,
 		timeline int64,
-		pluginArguments ...string) {
+		pluginArguments ...string,
+	) {
 		repl.On("StartReplication", slotName, startLsn, timeline, pluginArguments).Return(err).Once()
 	}
 
@@ -968,7 +969,7 @@ func TestListener_Process(t *testing.T) {
 			setup: func() {
 				ctx, _ = context.WithTimeout(ctx, time.Millisecond*20)
 				setCreatePublication("wal-listener", nil)
-				setGetSlotLSN("slot1", "", nil)
+				setGetSlotLSN("slot1", "", pgx.ErrNoRows)
 				setCreateReplicationSlotEx(
 					"slot1",
 					"pgoutput",

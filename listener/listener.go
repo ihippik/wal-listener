@@ -2,6 +2,7 @@ package listener
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -44,7 +45,7 @@ type replication interface {
 
 type repository interface {
 	CreatePublication(name string) error
-	GetSlotLSN(slotName string) (string, error)
+	GetSlotLSN(slotName string) (*string, error)
 	NewStandbyStatus(walPositions ...uint64) (status *pgx.StandbyStatus, err error)
 	IsAlive() bool
 	Close() error
@@ -265,16 +266,25 @@ func (l *Listener) checkConnection(ctx context.Context) error {
 // slotIsExists checks whether a slot has already been created and if it has been created uses it.
 func (l *Listener) slotIsExists() (bool, error) {
 	restartLSNStr, err := l.repository.GetSlotLSN(l.cfg.Listener.SlotName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		l.log.Info("slot does not exist", slog.String("slot_name", l.cfg.Listener.SlotName))
+		return false, nil
+	}
+
 	if err != nil {
 		return false, fmt.Errorf("get slot lsn: %w", err)
 	}
 
-	if len(restartLSNStr) == 0 {
-		l.log.Warn("restart LSN not found", slog.String("slot_name", l.cfg.Listener.SlotName))
+	if restartLSNStr == nil {
+		l.log.Error("restart LSN is NULL, dropping replication slot", slog.String("slot_name", l.cfg.Listener.SlotName))
+		err = l.replicator.DropReplicationSlot(l.cfg.Listener.SlotName)
+		if err != nil {
+			return false, fmt.Errorf("drop replication slot: %w", err)
+		}
 		return false, nil
 	}
 
-	lsn, err := pgx.ParseLSN(restartLSNStr)
+	lsn, err := pgx.ParseLSN(*restartLSNStr)
 	if err != nil {
 		return false, fmt.Errorf("parse lsn: %w", err)
 	}
