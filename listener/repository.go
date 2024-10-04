@@ -3,6 +3,7 @@ package listener
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx"
 )
@@ -33,7 +34,7 @@ func (r RepositoryImpl) GetSlotLSN(slotName string) (string, error) {
 
 // CreatePublication create publication fo all.
 func (r RepositoryImpl) CreatePublication(name string) error {
-	if _, err := r.conn.Exec(`CREATE PUBLICATION "` + name + `" FOR ALL TABLES`); err != nil {
+	if _, err := r.conn.Exec(`CREATE PUBLICATION "` + name + `" FOR ALL TABLES`); err != nil && !strings.Contains("already exists", err.Error()) {
 		return fmt.Errorf("exec: %w", err)
 	}
 
