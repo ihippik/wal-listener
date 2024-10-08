@@ -2,17 +2,13 @@ package publisher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"cloud.google.com/go/pubsub"
-)
-
-const (
-	KB = 1024
-	MB = KB * KB
 )
 
 // PubSubConnection represent Pub/Sub connection.
@@ -55,7 +51,7 @@ func (c *PubSubConnection) getTopic(topic string) *pubsub.Topic {
 
 	t := c.client.TopicInProject(topic, c.projectID)
 	t.EnableMessageOrdering = c.enableOrdering
-	t.PublishSettings.ByteThreshold = 8 * MB
+	t.PublishSettings.ByteThreshold = 1e7
 	t.PublishSettings.DelayThreshold = 250 * time.Millisecond
 	t.PublishSettings.CountThreshold = 150
 
