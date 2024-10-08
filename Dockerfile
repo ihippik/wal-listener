@@ -15,7 +15,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o app ./cmd/wal-listener
 
 # Final Stage
-FROM cgr.dev/chainguard/busybox:latest-glibc as prod
+FROM cgr.dev/chainguard/busybox:latest-glibc AS prod
 
 WORKDIR /app/
 
