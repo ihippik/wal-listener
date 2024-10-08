@@ -21,4 +21,4 @@ WORKDIR /app/
 
 COPY --from=build /listener/app /app/
 
-CMD /app/app
+CMD ["/app/app"]
