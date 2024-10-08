@@ -486,8 +486,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 
 						var recordId any
 						switch event.Action {
-						case "INSERT":
-						case "UPDATE":
+						case "INSERT", "UPDATE":
 							recordId = event.Data["id"]
 						case "DELETE":
 							recordId = event.DataOld["id"]
@@ -499,7 +498,6 @@ func (l *Listener) Stream(ctx context.Context) error {
 							slog.String("subjectName", subjectName),
 							slog.String("table", event.Table),
 							slog.Any("recordId", recordId),
-							slog.Any("primaryKey", event.PrimaryKey),
 							slog.String("action", event.Action),
 						)
 					} else {
