@@ -484,20 +484,12 @@ func (l *Listener) Stream(ctx context.Context) error {
 						// this runs the risk of losing data, but this it is more important to keep processing WAL messages in the meantime
 						l.monitor.IncProblematicEvents(problemKindPublish)
 
-						var recordId any
-						switch event.Action {
-						case "INSERT", "UPDATE":
-							recordId = event.Data["id"]
-						case "DELETE":
-							recordId = event.DataOld["id"]
-						}
-
 						l.log.Warn(
 							"failed to publish message",
 							slog.Any("error", err),
 							slog.String("subjectName", subjectName),
 							slog.String("table", event.Table),
-							slog.Any("recordId", recordId),
+							slog.Any("primaryKey", event.PrimaryKey),
 							slog.String("action", event.Action),
 						)
 					} else {
