@@ -483,7 +483,24 @@ func (l *Listener) Stream(ctx context.Context) error {
 						// Only warn on publish failures, but continue to process and ack messages
 						// this runs the risk of losing data, but this it is more important to keep processing WAL messages in the meantime
 						l.monitor.IncProblematicEvents(problemKindPublish)
-						l.log.Warn("failed to publish message", slog.Any("error", err), slog.String("subjectName", subjectName), slog.String("table", event.Table), slog.String("action", event.Action))
+
+						var recordId any
+						switch event.Action {
+						case "INSERT":
+						case "UPDATE":
+							recordId = event.Data["id"]
+						case "DELETE":
+							recordId = event.DataOld["id"]
+						}
+
+						l.log.Warn(
+							"failed to publish message",
+							slog.Any("error", err),
+							slog.String("subjectName", subjectName),
+							slog.String("table", event.Table),
+							slog.Any("recordId", recordId),
+							slog.String("action", event.Action),
+						)
 					} else {
 						l.monitor.IncPublishedEvents(subjectName, event.Table)
 						l.log.Debug(
