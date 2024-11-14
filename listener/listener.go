@@ -366,12 +366,14 @@ func (l *Listener) Stream(ctx context.Context) error {
 				return nil
 			}
 
+			l.log.Debug("waiting for replication message")
 			msg, err := l.replicator.WaitForReplicationMessage(ctx)
 			if err != nil {
 				return fmt.Errorf("wait for replication message: %w", err)
 			}
 
 			if msg == nil {
+				l.log.Debug("msg was nil")
 				continue
 			}
 
