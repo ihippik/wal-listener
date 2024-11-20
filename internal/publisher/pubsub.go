@@ -3,6 +3,7 @@ package publisher
 import (
 	"context"
 	"fmt"
+	"github.com/ihippik/wal-listener/v2/apis"
 
 	"github.com/goccy/go-json"
 )
@@ -20,7 +21,7 @@ func NewGooglePubSubPublisher(pubSubConnection *PubSubConnection) *GooglePubSubP
 }
 
 // Publish send events, implements eventPublisher.
-func (p *GooglePubSubPublisher) Publish(ctx context.Context, topic string, event *Event) error {
+func (p *GooglePubSubPublisher) Publish(ctx context.Context, topic string, event *apis.Event) error {
 	body, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)

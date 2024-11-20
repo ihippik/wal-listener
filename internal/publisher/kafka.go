@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"github.com/ihippik/wal-listener/v2/apis"
 	"os"
 
 	"github.com/IBM/sarama"
@@ -23,7 +24,7 @@ func NewKafkaPublisher(producer sarama.SyncProducer) *KafkaPublisher {
 	return &KafkaPublisher{producer: producer}
 }
 
-func (p *KafkaPublisher) Publish(_ context.Context, topic string, event *Event) error {
+func (p *KafkaPublisher) Publish(_ context.Context, topic string, event *apis.Event) error {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)

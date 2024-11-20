@@ -3,6 +3,7 @@ package publisher
 import (
 	"context"
 	"fmt"
+	"github.com/ihippik/wal-listener/v2/apis"
 	"github.com/ihippik/wal-listener/v2/internal/config"
 
 	"github.com/goccy/go-json"
@@ -26,7 +27,7 @@ func NewRabbitPublisher(pubTopic string, conn *rabbitmq.Conn, publisher *rabbitm
 }
 
 // Publish send events, implements eventPublisher.
-func (p *RabbitPublisher) Publish(ctx context.Context, topic string, event *Event) error {
+func (p *RabbitPublisher) Publish(ctx context.Context, topic string, event *apis.Event) error {
 	const contentTypeJSON = "application/json"
 
 	body, err := json.Marshal(event)

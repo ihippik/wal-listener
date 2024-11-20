@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/ihippik/wal-listener/v2/apis"
 	"io"
 	"log/slog"
 	"reflect"
@@ -17,7 +18,6 @@ import (
 
 	"github.com/ihippik/wal-listener/v2/internal/config"
 	tx "github.com/ihippik/wal-listener/v2/internal/listener/transaction"
-	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
 var (
@@ -501,8 +501,8 @@ func TestListener_Stream(t *testing.T) {
 		).Return(err).After(10 * time.Millisecond)
 	}
 
-	setPublish := func(subject string, want publisher.Event, err error) {
-		publ.On("Publish", mock.Anything, subject, mock.MatchedBy(func(got publisher.Event) bool {
+	setPublish := func(subject string, want apis.Event, err error) {
+		publ.On("Publish", mock.Anything, subject, mock.MatchedBy(func(got apis.Event) bool {
 			ok := want.Action == got.Action &&
 				reflect.DeepEqual(want.Data, got.Data) &&
 				want.ID == got.ID &&
@@ -567,7 +567,7 @@ func TestListener_Stream(t *testing.T) {
 
 				setPublish(
 					"STREAM.pre_public_users",
-					publisher.Event{
+					apis.Event{
 						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
 						Schema:    "public",
 						Table:     "users",

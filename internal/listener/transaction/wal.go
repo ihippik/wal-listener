@@ -3,14 +3,13 @@ package transaction
 import (
 	"context"
 	"errors"
+	"github.com/ihippik/wal-listener/v2/apis"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
 type monitor interface {
@@ -51,12 +50,12 @@ func (w *WAL) Clear() {
 	w.Actions = nil
 }
 
-func (w *WAL) RetrieveEvent(event *publisher.Event) {
+func (w *WAL) RetrieveEvent(event *apis.Event) {
 	w.pool.Put(event)
 }
 
-func (w *WAL) getPoolEvent() *publisher.Event {
-	return w.pool.Get().(*publisher.Event)
+func (w *WAL) getPoolEvent() *apis.Event {
+	return w.pool.Get().(*apis.Event)
 }
 
 // CreateActionData create action from WAL message data.
@@ -115,8 +114,8 @@ func (w *WAL) CreateActionData(
 
 // CreateEventsWithFilter filter WAL message by table,
 // action and create events for each value.
-func (w *WAL) CreateEventsWithFilter(ctx context.Context, tableMap map[string][]string) <-chan *publisher.Event {
-	output := make(chan *publisher.Event)
+func (w *WAL) CreateEventsWithFilter(ctx context.Context, tableMap map[string][]string) <-chan *apis.Event {
+	output := make(chan *apis.Event)
 
 	go func(ctx context.Context) {
 		for _, item := range w.Actions {

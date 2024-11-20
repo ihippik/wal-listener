@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/ihippik/wal-listener/v2/apis"
 	"log/slog"
 
 	"github.com/jackc/pgx"
@@ -47,7 +48,7 @@ func (l pgxLogger) Log(_ pgx.LogLevel, msg string, _ map[string]any) {
 }
 
 type eventPublisher interface {
-	Publish(context.Context, string, *publisher.Event) error
+	Publish(context.Context, string, *apis.Event) error
 	Close() error
 }
 
@@ -62,7 +63,8 @@ func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slo
 
 		return publisher.NewKafkaPublisher(producer), nil
 	case config.PublisherTypeNats:
-		conn, err := nats.Connect(cfg.Address)
+		// TODO: using direct credentials currently for testing purpose only
+		conn, err := nats.Connect(cfg.Address, nats.UserCredentials("/home/user/go/src/go.bytebuilders.dev/launchpad/2021/gitea_setup/nats/admin.creds"))
 		if err != nil {
 			return nil, fmt.Errorf("nats connection: %w", err)
 		}

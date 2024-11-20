@@ -5,7 +5,10 @@ listener:
   heartbeatInterval: 10s
   filter:
     tables:
-      seasons:
+      ac_user:
+        - insert
+        - update
+      ac_contract:
         - insert
         - update
   topicsMap:
@@ -16,13 +19,13 @@ logger:
 database:
   host: localhost
   port: 5432
-  name: my_db
+  name: bb
   user: postgres
   password: postgres
   debug: false
 publisher:
-  type: kafka
-  address: localhost:4222
+  type: nats
+  address: localhost:30222
   enable_tls: true # Kafka only
   client_cert: "cert.pem" # Kafka only
   client_key: "key.pub" # Kafka only

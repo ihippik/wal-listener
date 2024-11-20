@@ -17,3 +17,6 @@
 # vendor/
 config.yml
 certs/*
+
+.go
+/bin
