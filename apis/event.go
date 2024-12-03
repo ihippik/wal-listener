@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/ihippik/wal-listener/v2/internal/config"
 )
 
 // Event structure for publishing to the NATS server.
@@ -21,7 +19,7 @@ type Event struct {
 }
 
 // SubjectName creates subject name from the prefix, schema and table name. Also using topic map from cfg.
-func (e *Event) SubjectName(cfg *config.Config) string {
+func (e *Event) SubjectName(cfg *Config) string {
 	topic := fmt.Sprintf("%s_%s", e.Schema, e.Table)
 
 	if cfg.Listener.TopicsMap != nil {

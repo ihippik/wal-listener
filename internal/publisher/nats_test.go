@@ -3,8 +3,6 @@ package publisher
 import (
 	"github.com/ihippik/wal-listener/v2/apis"
 	"testing"
-
-	"github.com/ihippik/wal-listener/v2/internal/config"
 )
 
 func TestEvent_GetSubjectName(t *testing.T) {
@@ -16,7 +14,7 @@ func TestEvent_GetSubjectName(t *testing.T) {
 	}
 
 	type args struct {
-		cfg *config.Config
+		cfg *apis.Config
 	}
 
 	tests := []struct {
@@ -34,11 +32,11 @@ func TestEvent_GetSubjectName(t *testing.T) {
 				Data:   nil,
 			},
 			args: args{
-				cfg: &config.Config{
-					Listener: &config.ListenerCfg{
+				cfg: &apis.Config{
+					Listener: &apis.ListenerCfg{
 						TopicsMap: nil,
 					},
-					Publisher: &config.PublisherCfg{TopicPrefix: "prefix_", Topic: "STREAM"},
+					Publisher: &apis.PublisherCfg{TopicPrefix: "prefix_", Topic: "STREAM"},
 				},
 			},
 			want: "STREAM.prefix_public_users",

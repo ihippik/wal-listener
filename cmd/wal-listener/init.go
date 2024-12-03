@@ -9,12 +9,11 @@ import (
 	"github.com/jackc/pgx"
 	"github.com/nats-io/nats.go"
 
-	"github.com/ihippik/wal-listener/v2/internal/config"
 	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
 // initPgxConnections initialise db and replication connections.
-func initPgxConnections(cfg *config.DatabaseCfg, logger *slog.Logger) (*pgx.Conn, *pgx.ReplicationConn, error) {
+func initPgxConnections(cfg *apis.DatabaseCfg, logger *slog.Logger) (*pgx.Conn, *pgx.ReplicationConn, error) {
 	pgxConf := pgx.ConnConfig{
 		LogLevel: pgx.LogLevelInfo,
 		Logger:   pgxLogger{logger},
@@ -53,16 +52,16 @@ type eventPublisher interface {
 }
 
 // factoryPublisher represents a factory function for creating a eventPublisher.
-func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slog.Logger) (eventPublisher, error) {
+func factoryPublisher(ctx context.Context, cfg *apis.PublisherCfg, logger *slog.Logger) (eventPublisher, error) {
 	switch cfg.Type {
-	case config.PublisherTypeKafka:
+	case apis.PublisherTypeKafka:
 		producer, err := publisher.NewProducer(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("kafka producer: %w", err)
 		}
 
 		return publisher.NewKafkaPublisher(producer), nil
-	case config.PublisherTypeNats:
+	case apis.PublisherTypeNats:
 		// TODO: using direct credentials currently for testing purpose only
 		conn, err := nats.Connect(cfg.Address, nats.UserCredentials("/home/user/go/src/go.bytebuilders.dev/launchpad/2021/gitea_setup/nats/admin.creds"))
 		if err != nil {
@@ -79,7 +78,7 @@ func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slo
 		}
 
 		return pub, nil
-	case config.PublisherTypeRabbitMQ:
+	case apis.PublisherTypeRabbitMQ:
 		conn, err := publisher.NewConnection(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("new connection: %w", err)
@@ -96,7 +95,7 @@ func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slo
 		}
 
 		return pub, nil
-	case config.PublisherTypeGooglePubSub:
+	case apis.PublisherTypeGooglePubSub:
 		pubSubConn, err := publisher.NewPubSubConnection(ctx, logger, cfg.PubSubProjectID)
 		if err != nil {
 			return nil, fmt.Errorf("could not create pubsub connection: %w", err)

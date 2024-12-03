@@ -106,3 +106,7 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace (
+	github.com/ihippik/wal-listener/v2 => github.com/appscode-cloud/wal-listener/v2 bbd69c1
+)
