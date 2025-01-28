@@ -217,7 +217,11 @@ func (w *WalTransaction) CreateActionData(
 			valueType: rel.Columns[num].valueType,
 			isKey:     rel.Columns[num].isKey,
 		}
-		column.AssertValue(row.Value)
+		if row.IsUnchangedToastedValue && len(oldRows) > num {
+			column.AssertValue(oldRows[num].Value)
+		} else {
+			column.AssertValue(row.Value)
+		}
 		newColumns = append(newColumns, column)
 	}
 

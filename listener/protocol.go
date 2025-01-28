@@ -165,5 +165,6 @@ type RelationColumn struct {
 
 // TupleData path of WAL message data.
 type TupleData struct {
-	Value []byte
+	Value                   []byte
+	IsUnchangedToastedValue bool
 }
