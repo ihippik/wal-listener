@@ -7,3 +7,7 @@
 docker
 certs
 Dockerfile
+.envrc
+nix
+tmp
+scripts

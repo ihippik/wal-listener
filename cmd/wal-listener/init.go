@@ -63,6 +63,8 @@ type eventPublisher interface {
 // factoryPublisher represents a factory function for creating a eventPublisher.
 func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slog.Logger) (eventPublisher, error) {
 	switch cfg.Type {
+	case config.PublisherTypeStdout:
+		return publisher.NewStdoutPublisher(), nil
 	case config.PublisherTypeKafka:
 		producer, err := publisher.NewProducer(cfg)
 		if err != nil {
