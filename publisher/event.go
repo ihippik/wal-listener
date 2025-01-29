@@ -10,14 +10,15 @@ import (
 
 // Event structure for publishing to the NATS server.
 type Event struct {
-	ID         uuid.UUID      `json:"id"`
-	Schema     string         `json:"schema"`
-	Table      string         `json:"table"`
-	Action     string         `json:"action"`
-	Data       map[string]any `json:"data"`
-	DataOld    map[string]any `json:"dataOld"`
-	EventTime  time.Time      `json:"commitTime"`
-	PrimaryKey []string       `json:"primaryKey"`
+	ID                     uuid.UUID      `json:"id"`
+	Schema                 string         `json:"schema"`
+	Table                  string         `json:"table"`
+	Action                 string         `json:"action"`
+	Data                   map[string]any `json:"data"`
+	DataOld                map[string]any `json:"dataOld"`
+	EventTime              time.Time      `json:"commitTime"`
+	PrimaryKey             []string       `json:"primaryKey"`
+	UnchangedToastedValues []string       `json:"unchangedToastedValues"`
 }
 
 // SubjectName creates subject name from the prefix, schema and table name. Also using topic map from cfg.
