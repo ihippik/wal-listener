@@ -60,19 +60,17 @@ func (c *PubSubConnection) getTopic(topic string) *pubsub.Topic {
 	return t
 }
 
-func (c *PubSubConnection) Publish(ctx context.Context, topic string, data []byte, orderingKey string) PublishResult {
+func (c *PubSubConnection) Publish(ctx context.Context, topic string, data []byte) PublishResult {
 	t := c.getTopic(topic)
 
 	result := t.Publish(ctx, &pubsub.Message{
-		Data:        data,
-		OrderingKey: orderingKey,
+		Data: data,
 	})
 
 	return &retryPausedResult{
-		inner:       result,
-		topic:       t,
-		data:        data,
-		orderingKey: orderingKey,
+		inner: result,
+		topic: t,
+		data:  data,
 	}
 }
 
@@ -86,22 +84,17 @@ func (c *PubSubConnection) Close() error {
 }
 
 type retryPausedResult struct {
-	inner       *pubsub.PublishResult
-	topic       *pubsub.Topic
-	data        []byte
-	orderingKey string
+	inner *pubsub.PublishResult
+	topic *pubsub.Topic
+	data  []byte
 }
 
 func (r *retryPausedResult) Get(ctx context.Context) (string, error) {
 	serverID, err := r.inner.Get(ctx)
 
 	if err != nil && errors.Is(err, pubsub.ErrPublishingPaused{}) {
-		// if we failed to publish because publishing is paused, resume publishing and retry
-		r.topic.ResumePublish(r.orderingKey)
-
 		return r.topic.Publish(ctx, &pubsub.Message{
-			Data:        r.data,
-			OrderingKey: r.orderingKey,
+			Data: r.data,
 		}).Get(ctx)
 	}
 
