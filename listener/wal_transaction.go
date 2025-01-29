@@ -213,10 +213,11 @@ func (w *WalTransaction) CreateActionData(
 
 	for num, row := range newRows {
 		column := Column{
-			log:       w.log,
-			name:      rel.Columns[num].name,
-			valueType: rel.Columns[num].valueType,
-			isKey:     rel.Columns[num].isKey,
+			log:                     w.log,
+			name:                    rel.Columns[num].name,
+			valueType:               rel.Columns[num].valueType,
+			isKey:                   rel.Columns[num].isKey,
+			isUnchangedToastedValue: row.IsUnchangedToastedValue,
 		}
 		if row.IsUnchangedToastedValue && len(oldRows) > num {
 			oldColumns[num].isUnchangedToastedValue = true
@@ -252,11 +253,7 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		dataOld := make(map[string]any, len(item.OldColumns))
 
 		for _, val := range item.OldColumns {
-			if inArray(w.excludes.Columns, val.name) {
-				continue
-			}
-			if val.isUnchangedToastedValue {
-				unchangedToastedValues = append(unchangedToastedValues, val.name)
+			if inArray(w.excludes.Columns, val.name) || val.isUnchangedToastedValue {
 				continue
 			}
 			dataOld[val.name] = val.value
@@ -269,6 +266,9 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		for _, val := range item.NewColumns {
 			if inArray(w.excludes.Columns, val.name) {
 				continue
+			}
+			if val.isUnchangedToastedValue {
+				unchangedToastedValues = append(unchangedToastedValues, val.name)
 			}
 			data[val.name] = val.value
 			if val.isKey {
