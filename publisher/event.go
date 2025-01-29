@@ -17,7 +17,6 @@ type Event struct {
 	Data                   map[string]any `json:"data"`
 	DataOld                map[string]any `json:"dataOld"`
 	EventTime              time.Time      `json:"commitTime"`
-	PrimaryKey             []string       `json:"primaryKey"`
 	UnchangedToastedValues []string       `json:"unchangedToastedValues"`
 }
 

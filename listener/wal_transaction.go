@@ -3,7 +3,6 @@ package listener
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -261,8 +260,6 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 
 		data := make(map[string]any, len(item.NewColumns))
 
-		var primaryKey []string
-
 		for _, val := range item.NewColumns {
 			if inArray(w.excludes.Columns, val.name) {
 				continue
@@ -271,9 +268,6 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 				unchangedToastedValues = append(unchangedToastedValues, val.name)
 			}
 			data[val.name] = val.value
-			if val.isKey {
-				primaryKey = append(primaryKey, fmt.Sprint(val.value))
-			}
 		}
 
 		event := w.pool.Get().(*publisher.Event)
@@ -284,7 +278,6 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		event.Data = data
 		event.DataOld = dataOld
 		event.EventTime = *w.CommitTime
-		event.PrimaryKey = primaryKey
 		event.UnchangedToastedValues = unchangedToastedValues
 
 		actions, found := w.includeTableMap[item.Table]
