@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/jackc/pglogrepl"
 )
 
 // BinaryParser represent binary protocol parser.
@@ -29,6 +31,15 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 	if len(msg) == 0 {
 		return errEmptyWALMessage
 	}
+
+	//todo: incorporate changes, remove custom parse below
+	logicalMsg, err := pglogrepl.Parse(msg)
+	if err != nil {
+		return fmt.Errorf("cannot parse logical replication message: %w", err)
+	}
+	p.log.Debug(
+		"Receive a logical replication message",
+		slog.String("type", logicalMsg.Type().String()))
 
 	p.msgType = msg[0]
 	p.buffer = bytes.NewBuffer(msg[1:])

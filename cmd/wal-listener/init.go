@@ -2,57 +2,45 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
-	"log/slog"
-
-	"github.com/jackc/pgx"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/nats-io/nats.go"
+	"log/slog"
 
 	"github.com/ihippik/wal-listener/v2/config"
 	"github.com/ihippik/wal-listener/v2/publisher"
 )
 
 // initPgxConnections initialise db and replication connections.
-func initPgxConnections(cfg *config.DatabaseCfg, logger *slog.Logger) (*pgx.Conn, *pgx.ReplicationConn, error) {
-	pgxConf := pgx.ConnConfig{
-		LogLevel: pgx.LogLevelInfo,
-		Logger:   pgxLogger{logger},
-		Host:     cfg.Host,
-		Port:     cfg.Port,
-		Database: cfg.Name,
-		User:     cfg.User,
-		Password: cfg.Password,
-	}
+func initPgxConnections(ctx context.Context, cfg *config.DatabaseCfg, logger *slog.Logger) (*pgx.Conn, *pgconn.PgConn, error) {
+	connStringRepl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable&replication=database", cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name)
 
-	if cfg.SSL != nil {
-		pgxConf.TLSConfig = &tls.Config{
-			ServerName:         cfg.SSL.ServerName,
-			InsecureSkipVerify: cfg.SSL.SkipVerify,
-		}
-	}
+	connString := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name)
 
-	pgConn, err := pgx.Connect(pgxConf)
+	//todo: parse conn string, assign logger and ssl
+
+	conn, err := pgx.Connect(ctx, connString)
 	if err != nil {
 		return nil, nil, fmt.Errorf("db connection: %w", err)
 	}
 
-	rConnection, err := pgx.ReplicationConnect(pgxConf)
+	replConn, err := pgconn.Connect(ctx, connStringRepl)
 	if err != nil {
-		return nil, nil, fmt.Errorf("replication connect: %w", err)
+		return nil, nil, fmt.Errorf("replication connection: %w", err)
 	}
 
-	return pgConn, rConnection, nil
+	return conn, replConn, nil
 }
 
-type pgxLogger struct {
-	logger *slog.Logger
-}
-
-// Log DB message.
-func (l pgxLogger) Log(_ pgx.LogLevel, msg string, _ map[string]any) {
-	l.logger.Debug(msg)
-}
+//type pgxLogger struct {
+//	logger *slog.Logger
+//}
+//
+//// Log DB message.
+//func (l pgxLogger) Log(_ pgx.LogLevel, msg string, _ map[string]any) {
+//	l.logger.Debug(msg)
+//}
 
 type eventPublisher interface {
 	Publish(context.Context, string, *publisher.Event) publisher.PublishResult
