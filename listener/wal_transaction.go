@@ -84,11 +84,12 @@ type ActionData struct {
 
 // Column of the table with which changes occur.
 type Column struct {
-	log       *slog.Logger
-	name      string
-	value     any
-	valueType int
-	isKey     bool
+	log                     *slog.Logger
+	name                    string
+	value                   any
+	valueType               int
+	isKey                   bool
+	isUnchangedToastedValue bool
 }
 
 // AssertValue converts bytes to a specific type depending
@@ -218,6 +219,7 @@ func (w *WalTransaction) CreateActionData(
 			isKey:     rel.Columns[num].isKey,
 		}
 		if row.IsUnchangedToastedValue && len(oldRows) > num {
+			oldColumns[num].isUnchangedToastedValue = true
 			column.AssertValue(oldRows[num].Value)
 		} else {
 			column.AssertValue(row.Value)
@@ -246,10 +248,15 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 			continue
 		}
 
+		var unchangedToastedValues []string
 		dataOld := make(map[string]any, len(item.OldColumns))
 
 		for _, val := range item.OldColumns {
 			if inArray(w.excludes.Columns, val.name) {
+				continue
+			}
+			if val.isUnchangedToastedValue {
+				unchangedToastedValues = append(unchangedToastedValues, val.name)
 				continue
 			}
 			dataOld[val.name] = val.value
@@ -278,6 +285,7 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		event.DataOld = dataOld
 		event.EventTime = *w.CommitTime
 		event.PrimaryKey = primaryKey
+		event.UnchangedToastedValues = unchangedToastedValues
 
 		actions, found := w.includeTableMap[item.Table]
 
