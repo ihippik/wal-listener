@@ -2,7 +2,6 @@ package publisher
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -63,15 +62,9 @@ func (c *PubSubConnection) getTopic(topic string) *pubsub.Topic {
 func (c *PubSubConnection) Publish(ctx context.Context, topic string, data []byte) PublishResult {
 	t := c.getTopic(topic)
 
-	result := t.Publish(ctx, &pubsub.Message{
+	return t.Publish(ctx, &pubsub.Message{
 		Data: data,
 	})
-
-	return &retryPausedResult{
-		inner: result,
-		topic: t,
-		data:  data,
-	}
 }
 
 func (c *PubSubConnection) Flush(topic string) {
@@ -81,22 +74,4 @@ func (c *PubSubConnection) Flush(topic string) {
 
 func (c *PubSubConnection) Close() error {
 	return c.client.Close()
-}
-
-type retryPausedResult struct {
-	inner *pubsub.PublishResult
-	topic *pubsub.Topic
-	data  []byte
-}
-
-func (r *retryPausedResult) Get(ctx context.Context) (string, error) {
-	serverID, err := r.inner.Get(ctx)
-
-	if err != nil && errors.Is(err, pubsub.ErrPublishingPaused{}) {
-		return r.topic.Publish(ctx, &pubsub.Message{
-			Data: r.data,
-		}).Get(ctx)
-	}
-
-	return serverID, err
 }
