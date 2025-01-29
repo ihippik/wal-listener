@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -426,7 +425,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 				case pglogrepl.XLogDataByteID:
 					xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
 					if err != nil {
-						log.Fatalln("ParseXLogData failed (data):", err)
+						return fmt.Errorf("ParseXLogData failed (data): %w", err)
 					}
 
 					l.log.Debug("new message WAL end:", xld.ServerWALEnd)
@@ -590,17 +589,6 @@ func (l *Listener) Stream(ctx context.Context) error {
 }
 
 func (l *Listener) processHeartBeat(ctx context.Context, pkm *pglogrepl.PrimaryKeepaliveMessage) {
-	//todo
-	//if msg.ServerHeartbeat == nil {
-	//	return
-	//}
-	//
-	//l.log.Debug(
-	//	"received server heartbeat",
-	//	slog.Uint64("server_wal_end", msg.ServerHeartbeat.ServerWalEnd),
-	//	slog.Uint64("server_time", msg.ServerHeartbeat.ServerTime),
-	//)
-
 	if pkm.ReplyRequested {
 		l.log.Debug("status requested")
 

@@ -33,15 +33,6 @@ func initPgxConnections(ctx context.Context, cfg *config.DatabaseCfg, logger *sl
 	return conn, replConn, nil
 }
 
-//type pgxLogger struct {
-//	logger *slog.Logger
-//}
-//
-//// Log DB message.
-//func (l pgxLogger) Log(_ pgx.LogLevel, msg string, _ map[string]any) {
-//	l.logger.Debug(msg)
-//}
-
 type eventPublisher interface {
 	Publish(context.Context, string, *publisher.Event) publisher.PublishResult
 	Flush(string)
