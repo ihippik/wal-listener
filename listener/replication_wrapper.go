@@ -3,10 +3,11 @@ package listener
 import (
 	"context"
 	"fmt"
+	"log"
+
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
-	"log"
 )
 
 type ReplicationWrapper struct {
@@ -57,7 +58,6 @@ func (r *ReplicationWrapper) StartReplication(slotName string, startLsn pglogrep
 }
 
 func (r *ReplicationWrapper) SendStandbyStatus(ctx context.Context, lsn pglogrepl.LSN, withReply bool) error {
-	log.Printf("Sending standby status update with lsn: %s\n", lsn)
 	err := pglogrepl.SendStandbyStatusUpdate(ctx, r.conn, pglogrepl.StandbyStatusUpdate{
 		WALWritePosition: lsn,
 		ReplyRequested:   withReply,
@@ -84,7 +84,11 @@ func (r *ReplicationWrapper) WaitForReplicationMessage(ctx context.Context) (*pg
 		return nil, fmt.Errorf("unexpected message: %T", rawMsg)
 	}
 
-	return msg, nil
+	//we run into pointer / data overwrite issues if we don't copy the data
+	var msgCopy = make([]byte, len(msg.Data))
+	copy(msgCopy, msg.Data)
+
+	return &pgproto3.CopyData{Data: msgCopy}, nil
 }
 
 func (r *ReplicationWrapper) IsAlive() bool {

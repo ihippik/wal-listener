@@ -375,7 +375,6 @@ func (l *Listener) Stream(ctx context.Context) error {
 				return nil
 			}
 
-			l.log.Debug("waiting for replication message")
 			msg, err := l.replicator.WaitForReplicationMessage(ctx)
 			if err != nil {
 				return fmt.Errorf("wait for replication message: %w", err)
@@ -384,16 +383,6 @@ func (l *Listener) Stream(ctx context.Context) error {
 			if msg == nil {
 				l.log.Debug("msg was nil")
 				continue
-			}
-
-			if msg.Data[0] == pglogrepl.XLogDataByteID {
-				xld, _ := pglogrepl.ParseXLogData(msg.Data[1:])
-				l.log.Debug("++++++++++++++++++++++++++XLD:", string(xld.WALData))
-				logicalMsg, err := pglogrepl.Parse(xld.WALData)
-				if err != nil {
-					return fmt.Errorf("cannot parse logical replication message: %w", err)
-				}
-				l.log.Debug("++++++++++++++++++++++++++Receive a logical replication message:", logicalMsg.Type())
 			}
 
 			messageChan <- msg
@@ -414,7 +403,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 					if err != nil {
 						return fmt.Errorf("ParsePrimaryKeepaliveMessage failed: %w", err) //todo
 					}
-					l.log.Debug("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
+					l.log.Debug("Primary Keepalive Message", "ServerWALEnd", pkm.ServerWALEnd, "ServerTime", pkm.ServerTime, "ReplyRequested", pkm.ReplyRequested)
 
 					eventsChan <- &messageAndEvents{
 						pkm: &pkm,
@@ -427,8 +416,6 @@ func (l *Listener) Stream(ctx context.Context) error {
 					if err != nil {
 						return fmt.Errorf("ParseXLogData failed (data): %w", err)
 					}
-
-					l.log.Debug("new message WAL end:", xld.ServerWALEnd)
 
 					err = l.parser.ParseWalMessage(xld.WALData, tx)
 					if err != nil {
