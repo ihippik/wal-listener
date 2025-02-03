@@ -101,7 +101,7 @@ func main() {
 				}
 			}()
 
-			replication := listener.NewReplicationWrapper(replConn)
+			replication := listener.NewReplicationWrapper(replConn, logger)
 
 			service := listener.NewWalListener(
 				cfg,

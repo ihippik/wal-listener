@@ -3,7 +3,7 @@ package listener
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -12,10 +12,11 @@ import (
 
 type ReplicationWrapper struct {
 	conn *pgconn.PgConn
+	log  *slog.Logger
 }
 
-func NewReplicationWrapper(conn *pgconn.PgConn) *ReplicationWrapper {
-	return &ReplicationWrapper{conn: conn}
+func NewReplicationWrapper(conn *pgconn.PgConn, log *slog.Logger) *ReplicationWrapper {
+	return &ReplicationWrapper{conn: conn, log: log}
 }
 
 func (r *ReplicationWrapper) IdentifySystem() (pglogrepl.IdentifySystemResult, error) {
@@ -43,9 +44,8 @@ func (r *ReplicationWrapper) CreateReplicationSlotEx(slotName, outputPlugin stri
 	if err != nil {
 		return fmt.Errorf("CreateReplicationSlot failed: %w", err)
 	}
-	log.Println("Created temporary replication slot:", slotName)
+	r.log.Info("created temporary replication slot:", slotName)
 
-	//todo: do we need to return anything?
 	return nil
 }
 
@@ -75,13 +75,12 @@ func (r *ReplicationWrapper) WaitForReplicationMessage(ctx context.Context) (*pg
 	}
 
 	if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
-		log.Fatalf("received Postgres WAL error: %+v", errMsg)
+		return nil, fmt.Errorf("received Postgres WAL error: %+v", errMsg)
 	}
 
 	msg, ok := rawMsg.(*pgproto3.CopyData)
 	if !ok {
-		log.Printf("Received unexpected message: %T\n", rawMsg)
-		return nil, fmt.Errorf("unexpected message: %T", rawMsg)
+		return nil, fmt.Errorf("received unexpected message: %T", rawMsg)
 	}
 
 	//we run into pointer / data overwrite issues if we don't copy the data
@@ -95,8 +94,12 @@ func (r *ReplicationWrapper) IsAlive() bool {
 	return !r.conn.IsClosed()
 }
 
-func (r *ReplicationWrapper) DropReplicationSlot(slotName string) (err error) {
-	//todo: implement
+func (r *ReplicationWrapper) DropReplicationSlot(slotName string) error {
+	result := r.conn.Exec(context.Background(), fmt.Sprintf("DROP PUBLICATION IF EXISTS %s;", slotName))
+	_, err := result.ReadAll()
+	if err != nil {
+		return fmt.Errorf("cannot drop publication if exists: %w", err)
+	}
 	return nil
 }
 
