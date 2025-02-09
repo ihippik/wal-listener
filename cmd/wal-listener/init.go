@@ -2,14 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/nats-io/nats.go"
 	"log/slog"
 
 	"github.com/ihippik/wal-listener/v2/config"
 	"github.com/ihippik/wal-listener/v2/publisher"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/tracelog"
+	"github.com/nats-io/nats.go"
 )
 
 // initPgxConnections initialise db and replication connections.
@@ -18,9 +20,20 @@ func initPgxConnections(ctx context.Context, cfg *config.DatabaseCfg, logger *sl
 
 	connString := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name)
 
-	//todo: parse conn string, assign logger and ssl
+	pgxConf, err := pgx.ParseConfig(connString)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parsing connection string: %w", err)
+	}
+	pgxConf.Tracer = NewTracerLogger(logger)
 
-	conn, err := pgx.Connect(ctx, connString)
+	if cfg.SSL != nil {
+		pgxConf.TLSConfig = &tls.Config{
+			ServerName:         cfg.SSL.ServerName,
+			InsecureSkipVerify: cfg.SSL.SkipVerify,
+		}
+	}
+
+	conn, err := pgx.ConnectConfig(ctx, pgxConf)
 	if err != nil {
 		return nil, nil, fmt.Errorf("db connection: %w", err)
 	}
@@ -31,6 +44,25 @@ func initPgxConnections(ctx context.Context, cfg *config.DatabaseCfg, logger *sl
 	}
 
 	return conn, replConn, nil
+}
+
+type pgxLogger struct {
+	logger *slog.Logger
+}
+
+func (l pgxLogger) Log(ctx context.Context, _ tracelog.LogLevel, msg string, data map[string]any) {
+	var attrs []slog.Attr
+	for k, v := range data {
+		attrs = append(attrs, slog.Any(k, v))
+	}
+	l.logger.LogAttrs(ctx, slog.LevelDebug, msg, attrs...) //we always want debug level
+}
+
+func NewTracerLogger(l *slog.Logger) pgx.QueryTracer {
+	return &tracelog.TraceLog{
+		Logger:   &pgxLogger{logger: l},
+		LogLevel: tracelog.LogLevelDebug,
+	}
 }
 
 type eventPublisher interface {
