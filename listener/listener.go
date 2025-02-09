@@ -515,7 +515,6 @@ func (l *Listener) Stream(ctx context.Context) error {
 							slog.Any("error", err),
 							slog.String("subjectName", subjectName),
 							slog.String("table", event.Table),
-							slog.Any("primaryKey", event.PrimaryKey),
 							slog.String("action", event.Action),
 						)
 					} else {

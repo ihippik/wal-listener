@@ -322,6 +322,7 @@ func (p *BinaryParser) readTupleData() []TupleData {
 			p.log.Debug("tupleData: null data type")
 		case ToastDataType:
 			p.log.Debug("tupleData: toast data type")
+			data[i] = TupleData{IsUnchangedToastedValue: true}
 		case TextDataType:
 			vSize := int(p.readInt32())
 			data[i] = TupleData{Value: p.buffer.Next(vSize)}

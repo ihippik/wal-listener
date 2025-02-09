@@ -1,0 +1,20 @@
+listener:
+  slotName: wal_development
+  refreshConnection: 30s
+  heartbeatInterval: 10s
+  topicsMap:
+    /(.+)/: "all"
+logger:
+  level: warn
+  fmt: text
+database:
+  host: localhost
+  port: 5432
+  name: wal_development
+  user: wal_development
+  password: wal_development
+publisher:
+  type: stdout
+  topic: "does not matter"
+monitoring:
+  promAddr: ":2112"

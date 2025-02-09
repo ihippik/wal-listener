@@ -15,6 +15,7 @@ import (
 type PublisherType string
 
 const (
+	PublisherTypeStdout       PublisherType = "stdout"
 	PublisherTypeNats         PublisherType = "nats"
 	PublisherTypeKafka        PublisherType = "kafka"
 	PublisherTypeRabbitMQ     PublisherType = "rabbitmq"

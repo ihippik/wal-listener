@@ -3,7 +3,6 @@ package listener
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -84,11 +83,12 @@ type ActionData struct {
 
 // Column of the table with which changes occur.
 type Column struct {
-	log       *slog.Logger
-	name      string
-	value     any
-	valueType int
-	isKey     bool
+	log                     *slog.Logger
+	name                    string
+	value                   any
+	valueType               int
+	isKey                   bool
+	isUnchangedToastedValue bool
 }
 
 // AssertValue converts bytes to a specific type depending
@@ -212,12 +212,18 @@ func (w *WalTransaction) CreateActionData(
 
 	for num, row := range newRows {
 		column := Column{
-			log:       w.log,
-			name:      rel.Columns[num].name,
-			valueType: rel.Columns[num].valueType,
-			isKey:     rel.Columns[num].isKey,
+			log:                     w.log,
+			name:                    rel.Columns[num].name,
+			valueType:               rel.Columns[num].valueType,
+			isKey:                   rel.Columns[num].isKey,
+			isUnchangedToastedValue: row.IsUnchangedToastedValue,
 		}
-		column.AssertValue(row.Value)
+		if row.IsUnchangedToastedValue && len(oldRows) > num {
+			oldColumns[num].isUnchangedToastedValue = true
+			column.AssertValue(oldRows[num].Value)
+		} else {
+			column.AssertValue(row.Value)
+		}
 		newColumns = append(newColumns, column)
 	}
 
@@ -242,10 +248,11 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 			continue
 		}
 
+		var unchangedToastedValues []string
 		dataOld := make(map[string]any, len(item.OldColumns))
 
 		for _, val := range item.OldColumns {
-			if inArray(w.excludes.Columns, val.name) {
+			if inArray(w.excludes.Columns, val.name) || val.isUnchangedToastedValue {
 				continue
 			}
 			dataOld[val.name] = val.value
@@ -253,16 +260,14 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 
 		data := make(map[string]any, len(item.NewColumns))
 
-		var primaryKey []string
-
 		for _, val := range item.NewColumns {
 			if inArray(w.excludes.Columns, val.name) {
 				continue
 			}
-			data[val.name] = val.value
-			if val.isKey {
-				primaryKey = append(primaryKey, fmt.Sprint(val.value))
+			if val.isUnchangedToastedValue {
+				unchangedToastedValues = append(unchangedToastedValues, val.name)
 			}
+			data[val.name] = val.value
 		}
 
 		event := w.pool.Get().(*publisher.Event)
@@ -273,7 +278,7 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		event.Data = data
 		event.DataOld = dataOld
 		event.EventTime = *w.CommitTime
-		event.PrimaryKey = primaryKey
+		event.UnchangedToastedValues = unchangedToastedValues
 
 		actions, found := w.includeTableMap[item.Table]
 
