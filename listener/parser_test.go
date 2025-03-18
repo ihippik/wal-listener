@@ -488,7 +488,10 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					0, 0, 0, 0, 0, 0, 0, 0,
 					0, 0, 0, 5,
 				},
-				tx: NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}),
+				tx: NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{
+					"environment": "test",
+					"service":     "wal-listener",
+				}),
 			},
 			want: &WalTransaction{
 				pool:          nil,
@@ -498,6 +501,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				BeginTime:     &postgresEpoch,
 				RelationStore: make(map[int32]RelationData),
 				Actions:       make([]ActionData, 0),
+				tags:          map[string]string{"environment": "test", "service": "wal-listener"},
 			},
 			wantErr: false,
 		},

@@ -29,6 +29,7 @@ type Config struct {
 	Publisher  *PublisherCfg `valid:"required"`
 	Logger     *cfg.Logger   `valid:"required"`
 	Monitoring cfg.Monitoring
+	Tags       map[string]string
 }
 
 // ListenerCfg path of the listener config.
