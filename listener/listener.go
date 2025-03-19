@@ -152,7 +152,7 @@ func (l *Listener) liveness(w http.ResponseWriter, r *http.Request) {
 		resp = []byte("failed")
 		respCode = http.StatusInternalServerError
 
-		l.log.Warn("liveness probe failed")
+		l.log.Warn("liveness probe failed", slog.String("error", errReplConnectionIsLost.Error()))
 	}
 
 	w.WriteHeader(respCode)
@@ -174,7 +174,7 @@ func (l *Listener) readiness(w http.ResponseWriter, r *http.Request) {
 		resp = []byte("failed")
 		respCode = http.StatusInternalServerError
 
-		l.log.Warn("readiness probe failed")
+		l.log.Warn("readiness probe failed", slog.String("error", errConnectionIsLost.Error()))
 	}
 
 	w.WriteHeader(respCode)
@@ -333,7 +333,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 		}
 	}()
 
-	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude)
+	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude, l.cfg.Tags)
 
 	group, ctx := errgroup.WithContext(ctx)
 	messageChan := make(chan *pgx.ReplicationMessage, 20_000)
@@ -561,7 +561,7 @@ func (l *Listener) processHeartBeat(msg *pgx.ReplicationMessage) {
 		l.log.Debug("status requested")
 
 		if err := l.SendStandbyStatus(); err != nil {
-			l.log.Warn("send standby status: %w", err)
+			l.log.Warn("send standby status", slog.String("error", err.Error()))
 		}
 	}
 }

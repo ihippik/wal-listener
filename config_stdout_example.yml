@@ -18,3 +18,5 @@ publisher:
   topic: "does not matter"
 monitoring:
   promAddr: ":2112"
+tags:
+  connection: "example"
