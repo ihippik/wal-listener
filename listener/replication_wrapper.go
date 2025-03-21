@@ -28,19 +28,7 @@ func (r *ReplicationWrapper) IdentifySystem() (pglogrepl.IdentifySystemResult, e
 }
 
 func (r *ReplicationWrapper) CreateReplicationSlotEx(slotName, outputPlugin string) error {
-	result := r.conn.Exec(context.Background(), fmt.Sprintf("DROP PUBLICATION IF EXISTS %s;", slotName))
-	_, err := result.ReadAll()
-	if err != nil {
-		return fmt.Errorf("cannot drop publication if exists: %w", err)
-	}
-
-	result = r.conn.Exec(context.Background(), fmt.Sprintf("CREATE PUBLICATION %s FOR ALL TABLES;", slotName))
-	_, err = result.ReadAll()
-	if err != nil {
-		return fmt.Errorf("cannot create publication: %s", err)
-	}
-
-	_, err = pglogrepl.CreateReplicationSlot(context.Background(), r.conn, slotName, outputPlugin, pglogrepl.CreateReplicationSlotOptions{Temporary: true})
+	_, err := pglogrepl.CreateReplicationSlot(context.Background(), r.conn, slotName, outputPlugin, pglogrepl.CreateReplicationSlotOptions{Temporary: false})
 	if err != nil {
 		return fmt.Errorf("CreateReplicationSlot failed: %w", err)
 	}

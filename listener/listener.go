@@ -310,15 +310,9 @@ const (
 // Stream receive event from PostgreSQL.
 // Accept message, apply filter and  publish it in NATS server.
 func (l *Listener) Stream(ctx context.Context) error {
-	ident, err := l.replicator.IdentifySystem()
-	if err != nil {
-		return fmt.Errorf("identify system: %w", err)
-	}
-	clientXLogPos := ident.XLogPos
-
-	if err = l.replicator.StartReplication(
+	if err := l.replicator.StartReplication(
 		l.cfg.Listener.SlotName,
-		clientXLogPos,
+		l.readLSN(),
 		protoVersion,
 		publicationNames(publicationName),
 		//"messages 'true'", todo: only in pg 15
@@ -420,6 +414,10 @@ func (l *Listener) Stream(ctx context.Context) error {
 					err = l.parser.ParseWalMessage(xld.WALData, tx)
 					if err != nil {
 						l.monitor.IncProblematicEvents(problemKindParse)
+						if errors.Is(err, errEmptyWALMessage) {
+							l.log.Debug("warning: empty WAL message")
+							continue
+						}
 						return fmt.Errorf("parse: %w", err)
 					}
 
@@ -560,7 +558,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 			case <-timer.C:
 				latest := latestWalStart.Load()
 				if latest > uint64(l.readLSN()) {
-					if err = l.AckWalMessage(ctx, pglogrepl.LSN(latest)); err != nil {
+					if err := l.AckWalMessage(ctx, pglogrepl.LSN(latest)); err != nil {
 						l.monitor.IncProblematicEvents(problemKindAck)
 						return fmt.Errorf("ack: %w", err)
 					}
