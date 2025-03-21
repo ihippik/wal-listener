@@ -71,6 +71,15 @@ topicsMap:
   main_customers: "notifier"
 ```
 
+### Adding tags
+
+You can also add tags to every published event using the `tags` configuration option:
+
+```yaml
+tags:
+  database: "main"
+```
+
 ## DB setting
 You must make the following settings in the db configuration (postgresql.conf)
 * wal_level >= “logical”

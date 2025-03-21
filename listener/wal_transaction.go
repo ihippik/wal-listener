@@ -44,10 +44,11 @@ type WalTransaction struct {
 
 	includeTableMap map[string][]string
 	excludes        config.ExcludeStruct
+	tags            map[string]string
 }
 
 // NewWalTransaction create and initialize new WAL transaction.
-func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor, includeTableMap map[string][]string, excludes config.ExcludeStruct) *WalTransaction {
+func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor, includeTableMap map[string][]string, excludes config.ExcludeStruct, tags map[string]string) *WalTransaction {
 	const aproxData = 300
 
 	return &WalTransaction{
@@ -58,6 +59,7 @@ func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMon
 		Actions:         make([]ActionData, 0, aproxData),
 		includeTableMap: includeTableMap,
 		excludes:        excludes,
+		tags:            tags,
 	}
 }
 
@@ -279,6 +281,7 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		event.DataOld = dataOld
 		event.EventTime = *w.CommitTime
 		event.UnchangedToastedValues = unchangedToastedValues
+		event.Tags = w.tags
 
 		actions, found := w.includeTableMap[item.Table]
 
