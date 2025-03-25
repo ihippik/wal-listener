@@ -354,7 +354,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 				l.log.Warn("stream: context canceled", "err", ctx.Err())
 				return nil
 			case <-ticker.C:
-				l.log.Info("channel status", slog.Int("messageChan", len(messageChan)), slog.Int("eventsChan", len(eventsChan)), slog.Int("resultChan", len(resultChan)))
+				l.log.Info("channel status", slog.Int("messageChan", len(messageChan)), slog.Int("eventsChan", len(eventsChan)), slog.Int("resultChan", len(resultChan)), slog.Uint64("lsn", l.readLSN()))
 			}
 		}
 	})
