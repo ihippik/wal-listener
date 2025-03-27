@@ -16,9 +16,14 @@ import (
 
 // initPgxConnections initialise db and replication connections.
 func initPgxConnections(ctx context.Context, cfg *config.DatabaseCfg, logger *slog.Logger) (*pgx.Conn, *pgconn.PgConn, error) {
-	connStringRepl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable&replication=database", cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name)
+	sslMode := "require"
+	if cfg.SSL == nil {
+		sslMode = "prefer"
+	}
 
-	connString := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name)
+	connStringRepl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s&replication=database", cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, sslMode)
+
+	connString := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s", cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, sslMode)
 
 	pgxConf, err := pgx.ParseConfig(connString)
 	if err != nil {
@@ -55,7 +60,7 @@ func (l pgxLogger) Log(ctx context.Context, _ tracelog.LogLevel, msg string, dat
 	for k, v := range data {
 		attrs = append(attrs, slog.Any(k, v))
 	}
-	l.logger.LogAttrs(ctx, slog.LevelDebug, msg, attrs...) //we always want debug level
+	l.logger.LogAttrs(ctx, slog.LevelDebug, msg, attrs...) // we always want debug level
 }
 
 func NewTracerLogger(l *slog.Logger) pgx.QueryTracer {
