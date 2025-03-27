@@ -576,7 +576,7 @@ func TestListener_Process(t *testing.T) {
 			},
 			setup: func() {
 				ctx, _ = context.WithTimeout(ctx, time.Millisecond*20)
-				setIdentifySystem(pglogrepl.IdentifySystemResult{}, nil)
+				setIdentifySystem(pglogrepl.IdentifySystemResult{XLogPos: 1099511628288}, nil)
 				setCreatePublication("wal-listener", nil)
 				setGetSlotLSN("slot1", "", pgx.ErrNoRows)
 				setCreateReplicationSlotEx(
