@@ -297,7 +297,7 @@ func (l *Listener) slotIsExists(ctx context.Context) (bool, error) {
 }
 
 const (
-	protoVersion    = "proto_version '1'" //todo: 2 not supported in pg 13
+	protoVersion    = "proto_version '1'" // todo: 2 not supported in pg 13
 	publicationName = "wal-listener"
 )
 
@@ -357,7 +357,13 @@ func (l *Listener) Stream(ctx context.Context) error {
 				l.log.Warn("stream: context canceled", "err", ctx.Err())
 				return nil
 			case <-ticker.C:
-				l.log.Info("channel status", slog.Int("messageChan", len(messageChan)), slog.Int("eventsChan", len(eventsChan)), slog.Int("resultChan", len(resultChan)), slog.Uint64("lsn", l.readLSN()))
+				l.log.Info(
+					"channel status",
+					slog.Int("messageChan", len(messageChan)),
+					slog.Int("eventsChan", len(eventsChan)),
+					slog.Int("resultChan", len(resultChan)),
+					slog.String("lsn", l.readLSN().String()),
+				)
 			}
 		}
 	})
@@ -395,7 +401,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 				case pglogrepl.PrimaryKeepaliveMessageByteID:
 					pkm, err := pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
 					if err != nil {
-						return fmt.Errorf("ParsePrimaryKeepaliveMessage failed: %w", err) //todo
+						return fmt.Errorf("ParsePrimaryKeepaliveMessage failed: %w", err) // todo
 					}
 					l.log.Debug("Primary Keepalive Message", "ServerWALEnd", pkm.ServerWALEnd, "ServerTime", pkm.ServerTime, "ReplyRequested", pkm.ReplyRequested)
 
