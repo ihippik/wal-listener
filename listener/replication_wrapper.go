@@ -32,7 +32,7 @@ func (r *ReplicationWrapper) CreateReplicationSlotEx(slotName, outputPlugin stri
 	if err != nil {
 		return fmt.Errorf("CreateReplicationSlot failed: %w", err)
 	}
-	r.log.Info("created temporary replication slot:", slotName)
+	r.log.Info("created temporary replication slot:", slog.String(slotName, ""))
 
 	return nil
 }
