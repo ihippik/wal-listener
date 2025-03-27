@@ -58,7 +58,7 @@ func TestBinaryParser_readTupleData(t *testing.T) {
 				buffer: bytes.NewBuffer([]byte{0, 1, 117, 0, 0, 0, 1, 116}),
 			},
 			want: []TupleData{
-				{},
+				{IsUnchangedToastedValue: true},
 			},
 		},
 	}
