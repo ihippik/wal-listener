@@ -13,8 +13,8 @@ type replicatorMock struct {
 }
 
 func (r *replicatorMock) IdentifySystem() (pglogrepl.IdentifySystemResult, error) {
-	//TODO implement me
-	panic("implement me")
+	args := r.Called()
+	return args.Get(0).(pglogrepl.IdentifySystemResult), args.Error(1)
 }
 
 func (r *replicatorMock) CreateReplicationSlotEx(slotName, outputPlugin string) error {
