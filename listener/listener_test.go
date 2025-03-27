@@ -1,22 +1,19 @@
 package listener
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
-	"reflect"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx"
+	"github.com/ihippik/wal-listener/v2/config"
+	"github.com/jackc/pglogrepl"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-
-	"github.com/ihippik/wal-listener/v2/config"
-	"github.com/ihippik/wal-listener/v2/publisher"
 )
 
 var (
@@ -30,6 +27,7 @@ func TestListener_slotIsExists(t *testing.T) {
 	}
 
 	repo := new(repositoryMock)
+	ctx := context.Background()
 
 	setGetSlotLSN := func(slotName, lsn string, err error) {
 		repo.On("GetSlotLSN", slotName).
@@ -103,7 +101,7 @@ func TestListener_slotIsExists(t *testing.T) {
 				repository: repo,
 			}
 
-			got, err := w.slotIsExists()
+			got, err := w.slotIsExists(ctx)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("slotIsExists() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -122,6 +120,8 @@ func TestListener_Stop(t *testing.T) {
 	repo := new(repositoryMock)
 	publ := new(publisherMock)
 	repl := new(replicatorMock)
+
+	ctx := context.Background()
 
 	setRepoClose := func(err error) {
 		repo.On("Close").
@@ -176,7 +176,7 @@ func TestListener_Stop(t *testing.T) {
 				replicator: repl,
 				repository: repo,
 			}
-			err := w.Stop()
+			err := w.Stop(ctx)
 			if err != nil && assert.Error(t, tt.wantErr) {
 				assert.EqualError(t, err, tt.wantErr.Error())
 			}
@@ -194,33 +194,26 @@ func nowInNano() uint64 {
 
 func TestListener_SendStandbyStatus(t *testing.T) {
 	type fields struct {
-		restartLSN uint64
+		restartLSN pglogrepl.LSN
 	}
 
 	repl := new(replicatorMock)
 	repo := new(repositoryMock)
+	ctx := context.Background()
 
-	setNewStandbyStatus := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
-		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond).Once()
-	}
-
-	setNewStandbyStatusRetry := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
-		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond).Times(3)
-	}
-
-	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
+	setSendStandbyStatus := func(lsn pglogrepl.LSN, err error) {
 		repl.On(
 			"SendStandbyStatus",
-			standByStatusMatcher(status),
+			standByStatusMatcher(lsn),
 		).
 			Return(err).
 			Once()
 	}
 
-	setSendStandbyStatusRetry := func(status *pgx.StandbyStatus, err error) {
+	setSendStandbyStatusRetry := func(lsn pglogrepl.LSN, err error) {
 		repl.On(
 			"SendStandbyStatus",
-			standByStatusMatcher(status),
+			standByStatusMatcher(lsn),
 		).
 			Return(err).
 			Times(3)
@@ -237,22 +230,8 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 		{
 			name: "success",
 			setup: func() {
-				setNewStandbyStatus([]uint64{10}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
-
 				setSendStandbyStatus(
-					&pgx.StandbyStatus{
-						WalWritePosition: 10,
-						WalFlushPosition: 10,
-						WalApplyPosition: 10,
-						ClientTime:       nowInNano(),
-						ReplyRequested:   0,
-					},
+					pglogrepl.LSN(10),
 					nil,
 				)
 			},
@@ -264,40 +243,10 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 		{
 			name: "some replicator err",
 			setup: func() {
-				setNewStandbyStatusRetry([]uint64{10}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
-
 				setSendStandbyStatusRetry(
-					&pgx.StandbyStatus{
-						WalWritePosition: 10,
-						WalFlushPosition: 10,
-						WalApplyPosition: 10,
-						ClientTime:       nowInNano(),
-						ReplyRequested:   0,
-					},
+					pglogrepl.LSN(10),
 					errSimple,
 				)
-			},
-			fields: fields{
-				restartLSN: 10,
-			},
-			wantErr: true,
-		},
-		{
-			name: "some repo err",
-			setup: func() {
-				setNewStandbyStatusRetry([]uint64{10}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, errors.New("some err"))
 			},
 			fields: fields{
 				restartLSN: 10,
@@ -320,7 +269,7 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 				lsn:        tt.fields.restartLSN,
 			}
 
-			if err := w.SendStandbyStatus(); (err != nil) != tt.wantErr {
+			if err := w.SendStandbyStatus(ctx); (err != nil) != tt.wantErr {
 				t.Errorf("SendStandbyStatus() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -334,49 +283,57 @@ func abs(val int64) int64 {
 	return val
 }
 
-func standByStatusMatcher(want *pgx.StandbyStatus) any {
-	return mock.MatchedBy(func(got *pgx.StandbyStatus) bool {
-		return want.ReplyRequested == got.ReplyRequested &&
-			want.WalApplyPosition == got.WalApplyPosition &&
-			want.WalFlushPosition == got.WalFlushPosition &&
-			want.WalWritePosition == got.WalWritePosition &&
-			abs(int64(got.ClientTime)-int64(want.ClientTime)) < 1000
+//func standByStatusMatcher(want *pgx.StandbyStatus) any {
+//	return mock.MatchedBy(func(got *pgx.StandbyStatus) bool {
+//		return want.ReplyRequested == got.ReplyRequested &&
+//			want.WalApplyPosition == got.WalApplyPosition &&
+//			want.WalFlushPosition == got.WalFlushPosition &&
+//			want.WalWritePosition == got.WalWritePosition &&
+//			abs(int64(got.ClientTime)-int64(want.ClientTime)) < 1000
+//	})
+//}
+
+func standByStatusMatcher(want pglogrepl.LSN) any {
+	return mock.MatchedBy(func(got pglogrepl.LSN) bool {
+		return want == got
 	})
 }
 
 func TestListener_AckWalMessage(t *testing.T) {
 	type fields struct {
-		restartLSN uint64
+		restartLSN pglogrepl.LSN
 	}
 
 	type args struct {
-		LSN uint64
+		LSN pglogrepl.LSN
 	}
 
 	repl := new(replicatorMock)
 	repo := new(repositoryMock)
 
-	setNewStandbyStatus := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
-		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond).Once()
+	ctx := context.Background()
+
+	setNewStandbyStatus := func(walPositions []uint64, lsn pglogrepl.LSN, err error) {
+		repo.On("NewStandbyStatus", walPositions).Return(lsn, err).After(10 * time.Millisecond).Once()
 	}
 
-	setNewStandbyStatusRetry := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
-		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond).Times(3)
+	setNewStandbyStatusRetry := func(walPositions []uint64, lsn pglogrepl.LSN, err error) {
+		repo.On("NewStandbyStatus", walPositions).Return(lsn, err).After(10 * time.Millisecond).Times(3)
 	}
 
-	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
+	setSendStandbyStatus := func(lsn pglogrepl.LSN, err error) {
 		repl.On(
 			"SendStandbyStatus",
-			standByStatusMatcher(status),
+			standByStatusMatcher(lsn),
 		).
 			Return(err).
 			Once()
 	}
 
-	setSendStandbyStatusRetry := func(status *pgx.StandbyStatus, err error) {
+	setSendStandbyStatusRetry := func(lsn pglogrepl.LSN, err error) {
 		repl.On(
 			"SendStandbyStatus",
-			standByStatusMatcher(status),
+			standByStatusMatcher(lsn),
 		).
 			Return(err).
 			Times(3)
@@ -392,22 +349,10 @@ func TestListener_AckWalMessage(t *testing.T) {
 		{
 			name: "success",
 			setup: func() {
-				setNewStandbyStatus([]uint64{24658872}, &pgx.StandbyStatus{
-					WalWritePosition: 24658872,
-					WalFlushPosition: 24658872,
-					WalApplyPosition: 24658872,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
+				setNewStandbyStatus([]uint64{24658872}, pglogrepl.LSN(24658872), nil)
 
 				setSendStandbyStatus(
-					&pgx.StandbyStatus{
-						WalWritePosition: 24658872,
-						WalFlushPosition: 24658872,
-						WalApplyPosition: 24658872,
-						ClientTime:       nowInNano(),
-						ReplyRequested:   0,
-					},
+					pglogrepl.LSN(24658872),
 					nil,
 				)
 			},
@@ -422,22 +367,10 @@ func TestListener_AckWalMessage(t *testing.T) {
 		{
 			name: "send status error",
 			setup: func() {
-				setNewStandbyStatusRetry([]uint64{24658872}, &pgx.StandbyStatus{
-					WalWritePosition: 24658872,
-					WalFlushPosition: 24658872,
-					WalApplyPosition: 24658872,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
+				setNewStandbyStatusRetry([]uint64{24658872}, pglogrepl.LSN(24658872), nil)
 
 				setSendStandbyStatusRetry(
-					&pgx.StandbyStatus{
-						WalWritePosition: 24658872,
-						WalFlushPosition: 24658872,
-						WalApplyPosition: 24658872,
-						ClientTime:       nowInNano(),
-						ReplyRequested:   0,
-					},
+					pglogrepl.LSN(24658872),
 					errSimple,
 				)
 			},
@@ -462,328 +395,11 @@ func TestListener_AckWalMessage(t *testing.T) {
 				repository: repo,
 				lsn:        tt.fields.restartLSN,
 			}
-			if err := w.AckWalMessage(tt.args.LSN); (err != nil) != tt.wantErr {
+			if err := w.AckWalMessage(ctx, tt.args.LSN); (err != nil) != tt.wantErr {
 				t.Errorf("AckWalMessage() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
 			repl.AssertExpectations(t)
-		})
-	}
-}
-
-func TestListener_Stream(t *testing.T) {
-	t.Skip() // FIXME
-
-	repo := new(repositoryMock)
-	publ := new(publisherMock)
-	repl := new(replicatorMock)
-	prs := new(parserMock)
-
-	type fields struct {
-		config     *config.Config
-		slotName   string
-		restartLSN uint64
-	}
-
-	type args struct {
-		timeout time.Duration
-	}
-
-	setNewStandbyStatus := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
-		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond)
-	}
-
-	setParseWalMessageOnce := func(msg []byte, tx *WalTransaction, err error) {
-		prs.On("ParseWalMessage", msg, tx).Return(err)
-	}
-
-	setStartReplication := func(err error, slotName string, startLsn uint64, timeline int64, pluginArguments ...string) {
-		repl.On(
-			"StartReplication",
-			slotName,
-			startLsn,
-			timeline,
-			pluginArguments,
-		).Return(err)
-	}
-
-	setWaitForReplicationMessage := func(msg *pgx.ReplicationMessage, err error) {
-		repl.On(
-			"WaitForReplicationMessage",
-			mock.Anything,
-		).Return(msg, err).After(10 * time.Millisecond)
-	}
-
-	setSendStandbyStatus := func(want *pgx.StandbyStatus, err error) {
-		repl.On(
-			"SendStandbyStatus",
-			mock.MatchedBy(func(got *pgx.StandbyStatus) bool {
-				return want.ReplyRequested == got.ReplyRequested &&
-					want.WalFlushPosition == got.WalFlushPosition &&
-					want.WalWritePosition == got.WalWritePosition &&
-					abs(int64(want.ClientTime)-int64(got.ClientTime)) < 100000
-			}),
-		).Return(err).After(10 * time.Millisecond)
-	}
-
-	setPublish := func(subject string, want publisher.Event, err error) {
-		publ.On("Publish", mock.Anything, subject, mock.MatchedBy(func(got publisher.Event) bool {
-			ok := want.Action == got.Action &&
-				reflect.DeepEqual(want.Data, got.Data) &&
-				want.ID == got.ID &&
-				want.Schema == got.Schema &&
-				want.Table == got.Table &&
-				want.EventTime.Sub(got.EventTime).Milliseconds() < 1000
-			if !ok {
-				t.Errorf("- want + got\n- %#+v\n+ %#+v", want, got)
-			}
-			return ok
-		})).Return(err)
-	}
-
-	uuid.SetRand(bytes.NewReader(make([]byte, 512)))
-
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	metrics := new(monitorMock)
-
-	tests := []struct {
-		name    string
-		setup   func()
-		fields  fields
-		args    args
-		wantErr error
-	}{
-		{
-			name: "success",
-			setup: func() {
-				setStartReplication(
-					nil,
-					"myslot",
-					uint64(0),
-					int64(-1),
-					protoVersion,
-					"publication_names 'wal-listener'",
-				)
-
-				setNewStandbyStatus([]uint64{10}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
-
-				setSendStandbyStatus(
-					&pgx.StandbyStatus{
-						WalWritePosition: 10,
-						WalFlushPosition: 10,
-						WalApplyPosition: 10,
-						ClientTime:       nowInNano(),
-						ReplyRequested:   0,
-					},
-					nil,
-				)
-
-				setParseWalMessageOnce(
-					[]byte(`some bytes`),
-					&WalTransaction{
-						monitor:       metrics,
-						log:           logger,
-						LSN:           0,
-						BeginTime:     nil,
-						CommitTime:    nil,
-						RelationStore: make(map[int32]RelationData),
-						Actions:       nil,
-					},
-					nil,
-				)
-
-				setPublish(
-					"STREAM.pre_public_users",
-					publisher.Event{
-						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
-						Schema:    "public",
-						Table:     "users",
-						Action:    "INSERT",
-						Data:      map[string]any{"id": 1},
-						EventTime: time.Now(),
-					},
-					nil,
-				)
-
-				setWaitForReplicationMessage(
-					&pgx.ReplicationMessage{
-						WalMessage: &pgx.WalMessage{
-							WalStart:     10,
-							ServerWalEnd: 0,
-							ServerTime:   0,
-							WalData:      []byte(`some bytes`),
-						},
-						ServerHeartbeat: &pgx.ServerHeartbeat{
-							ServerWalEnd:   0,
-							ServerTime:     0,
-							ReplyRequested: 1,
-						},
-					},
-					nil,
-				)
-			},
-			fields: fields{
-				config: &config.Config{
-					Listener: &config.ListenerCfg{
-						SlotName:          "myslot",
-						AckTimeout:        0,
-						HeartbeatInterval: 5 * time.Millisecond,
-						Include: config.IncludeStruct{
-							Tables: map[string][]string{"users": {"insert"}},
-						},
-					},
-					Publisher: &config.PublisherCfg{
-						Topic:       "STREAM",
-						TopicPrefix: "pre_",
-					},
-				},
-				slotName:   "myslot",
-				restartLSN: 0,
-			},
-			args: args{
-				timeout: 5 * time.Millisecond,
-			},
-		},
-		{
-			name: "start replication err",
-			setup: func() {
-				setStartReplication(
-					errSimple,
-					"myslot",
-					uint64(0),
-					int64(-1),
-					protoVersion,
-					"publication_names 'wal-listener'",
-				)
-			},
-			fields: fields{
-				config: &config.Config{
-					Listener: &config.ListenerCfg{
-						SlotName:          "myslot",
-						AckTimeout:        0,
-						HeartbeatInterval: 1,
-						Include: config.IncludeStruct{
-							Tables: map[string][]string{"users": {"insert"}},
-						},
-					},
-					Publisher: &config.PublisherCfg{
-						Topic:       "stream",
-						TopicPrefix: "pre_",
-					},
-				},
-				slotName:   "myslot",
-				restartLSN: 0,
-			},
-			args: args{
-				timeout: 100 * time.Microsecond,
-			},
-			wantErr: errors.New("start replication: some err"),
-		},
-		{
-			name: "wait for replication message err",
-			setup: func() {
-				setStartReplication(
-					nil,
-					"myslot",
-					uint64(0),
-					int64(-1),
-					protoVersion,
-					"publication_names 'wal-listener'",
-				)
-
-				setNewStandbyStatus([]uint64{0}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   10,
-				}, nil)
-
-				setSendStandbyStatus(
-					&pgx.StandbyStatus{
-						WalWritePosition: 10,
-						WalFlushPosition: 10,
-						WalApplyPosition: 10,
-						ClientTime:       nowInNano(),
-						ReplyRequested:   0,
-					},
-					nil,
-				)
-
-				setWaitForReplicationMessage(
-					&pgx.ReplicationMessage{
-						WalMessage: &pgx.WalMessage{
-							WalStart:     10,
-							ServerWalEnd: 0,
-							ServerTime:   0,
-							WalData:      []byte(`some bytes`),
-						},
-						ServerHeartbeat: &pgx.ServerHeartbeat{
-							ServerWalEnd:   0,
-							ServerTime:     0,
-							ReplyRequested: 1,
-						},
-					},
-					errSimple,
-				)
-			},
-			fields: fields{
-				config: &config.Config{
-					Listener: &config.ListenerCfg{
-						SlotName:          "myslot",
-						AckTimeout:        0,
-						HeartbeatInterval: 1,
-						Include: config.IncludeStruct{
-							Tables: map[string][]string{"users": {"insert"}},
-						},
-					},
-					Publisher: &config.PublisherCfg{
-						Topic:       "stream",
-						TopicPrefix: "pre_",
-					},
-				},
-				slotName:   "myslot",
-				restartLSN: 0,
-			},
-			args: args{
-				timeout: 100 * time.Microsecond,
-			},
-			wantErr: errors.New("wait for replication message: some err"),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			defer repl.AssertExpectations(t)
-
-			tt.setup()
-
-			ctx, _ := context.WithTimeout(context.Background(), tt.args.timeout)
-
-			w := &Listener{
-				log:        logger,
-				monitor:    metrics,
-				cfg:        tt.fields.config,
-				publisher:  publ,
-				replicator: repl,
-				repository: repo,
-				parser:     prs,
-				lsn:        tt.fields.restartLSN,
-			}
-
-			if err := w.Stream(ctx); err != nil && assert.Error(t, tt.wantErr, err.Error()) {
-				assert.EqualError(t, err, tt.wantErr.Error())
-			} else {
-				assert.NoError(t, err)
-			}
-
-			repl.ExpectedCalls = nil
 		})
 	}
 }
@@ -807,11 +423,10 @@ func TestListener_Process(t *testing.T) {
 	setStartReplication := func(
 		err error,
 		slotName string,
-		startLsn uint64,
-		timeline int64,
+		startLsn pglogrepl.LSN,
 		pluginArguments ...string,
 	) {
-		repl.On("StartReplication", slotName, startLsn, timeline, pluginArguments).Return(err).Once()
+		repl.On("StartReplication", slotName, startLsn, pluginArguments).Return(err).Once()
 	}
 
 	setIsAlive := func(res bool) {
@@ -830,7 +445,7 @@ func TestListener_Process(t *testing.T) {
 		repo.On("IsAlive").Return(res)
 	}
 
-	setWaitForReplicationMessage := func(mess *pgx.ReplicationMessage, err error) {
+	setWaitForReplicationMessage := func(mess *pgproto3.CopyData, err error) {
 		repl.On("WaitForReplicationMessage", mock.Anything).Return(mess, err)
 	}
 
@@ -842,8 +457,8 @@ func TestListener_Process(t *testing.T) {
 		repl.On("CreateReplicationSlotEx", slotName, outputPlugin).Return(consistentPoint, snapshotName, err)
 	}
 
-	setNewStandbyStatus := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
-		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond)
+	setIdentifySystem := func(result pglogrepl.IdentifySystemResult, err error) {
+		repl.On("IdentifySystem").Return(result, err)
 	}
 
 	tests := []struct {
@@ -869,21 +484,13 @@ func TestListener_Process(t *testing.T) {
 			setup: func() {
 				ctx, _ = context.WithTimeout(ctx, time.Millisecond*200)
 
-				setNewStandbyStatus([]uint64{1099511628288}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
-
+				setIdentifySystem(pglogrepl.IdentifySystemResult{}, nil)
 				setCreatePublication("wal-listener", nil)
 				setGetSlotLSN("slot1", "100/200", nil)
 				setStartReplication(
 					nil,
 					"slot1",
 					1099511628288,
-					-1,
 					"proto_version '1'",
 					"publication_names 'wal-listener'",
 				)
@@ -912,13 +519,13 @@ func TestListener_Process(t *testing.T) {
 			},
 			setup: func() {
 				ctx, _ = context.WithTimeout(ctx, time.Millisecond*20)
+				setIdentifySystem(pglogrepl.IdentifySystemResult{}, nil)
 				setCreatePublication("wal-listener", errors.New("some err"))
 				setGetSlotLSN("slot1", "100/200", nil)
 				setStartReplication(
 					nil,
 					"slot1",
 					1099511628288,
-					-1,
 					"proto_version '1'",
 					"publication_names 'wal-listener'",
 				)
@@ -947,6 +554,7 @@ func TestListener_Process(t *testing.T) {
 			},
 			setup: func() {
 				ctx, _ = context.WithTimeout(ctx, time.Millisecond*20)
+				setIdentifySystem(pglogrepl.IdentifySystemResult{}, nil)
 				setCreatePublication("wal-listener", nil)
 				setGetSlotLSN("slot1", "100/200", errors.New("some err"))
 			},
@@ -968,6 +576,7 @@ func TestListener_Process(t *testing.T) {
 			},
 			setup: func() {
 				ctx, _ = context.WithTimeout(ctx, time.Millisecond*20)
+				setIdentifySystem(pglogrepl.IdentifySystemResult{XLogPos: 1099511628288}, nil)
 				setCreatePublication("wal-listener", nil)
 				setGetSlotLSN("slot1", "", pgx.ErrNoRows)
 				setCreateReplicationSlotEx(
@@ -981,7 +590,6 @@ func TestListener_Process(t *testing.T) {
 					nil,
 					"slot1",
 					1099511628288,
-					-1,
 					"proto_version '1'",
 					"publication_names 'wal-listener'",
 				)

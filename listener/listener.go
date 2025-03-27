@@ -14,11 +14,12 @@ import (
 	"time"
 
 	retry "github.com/avast/retry-go/v4"
-	"github.com/jackc/pgx"
-	"golang.org/x/sync/errgroup"
-
 	"github.com/ihippik/wal-listener/v2/config"
 	"github.com/ihippik/wal-listener/v2/publisher"
+	"github.com/jackc/pglogrepl"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgproto3"
+	"golang.org/x/sync/errgroup"
 )
 
 // Logical decoding plugin.
@@ -34,21 +35,21 @@ type parser interface {
 }
 
 type replication interface {
-	CreateReplicationSlotEx(slotName, outputPlugin string) (consistentPoint string, snapshotName string, err error)
+	CreateReplicationSlotEx(slotName, outputPlugin string) error
 	DropReplicationSlot(slotName string) (err error)
-	StartReplication(slotName string, startLsn uint64, timeline int64, pluginArguments ...string) (err error)
-	WaitForReplicationMessage(ctx context.Context) (*pgx.ReplicationMessage, error)
-	SendStandbyStatus(k *pgx.StandbyStatus) (err error)
+	IdentifySystem() (pglogrepl.IdentifySystemResult, error)
+	StartReplication(slotName string, startLsn pglogrepl.LSN, pluginArguments ...string) (err error)
+	WaitForReplicationMessage(ctx context.Context) (*pgproto3.CopyData, error)
+	SendStandbyStatus(ctx context.Context, lsn pglogrepl.LSN, withReply bool) (err error)
 	IsAlive() bool
-	Close() error
+	Close(ctx context.Context) error
 }
 
 type repository interface {
-	CreatePublication(name string) error
-	GetSlotLSN(slotName string) (*string, error)
-	NewStandbyStatus(walPositions ...uint64) (status *pgx.StandbyStatus, err error)
+	CreatePublication(ctx context.Context, name string) error
+	GetSlotLSN(ctx context.Context, slotName string) (*string, error)
 	IsAlive() bool
-	Close() error
+	Close(ctx context.Context) error
 }
 
 type monitor interface {
@@ -58,7 +59,8 @@ type monitor interface {
 }
 
 type messageAndEvents struct {
-	msg    *pgx.ReplicationMessage
+	xld    *pglogrepl.XLogData
+	pkm    *pglogrepl.PrimaryKeepaliveMessage
 	events []*publisher.Event
 }
 
@@ -68,7 +70,8 @@ type eventAndPublishResult struct {
 	result      publisher.PublishResult
 	// Only include the message on the final event created from it
 	// we only ACK after the last message has been successfully published
-	msg *pgx.ReplicationMessage
+	xld *pglogrepl.XLogData
+	pkm *pglogrepl.PrimaryKeepaliveMessage
 }
 
 // Listener main service struct.
@@ -81,7 +84,7 @@ type Listener struct {
 	replicator replication
 	repository repository
 	parser     parser
-	lsn        uint64
+	lsn        pglogrepl.LSN
 	isAlive    atomic.Bool
 }
 
@@ -193,27 +196,26 @@ func (l *Listener) Process(ctx context.Context) error {
 
 	logger.Info("service was started", slog.String("version", "v0.2.0"))
 
-	if err := l.repository.CreatePublication(publicationName); err != nil {
+	if err := l.repository.CreatePublication(ctx, publicationName); err != nil {
 		logger.Warn("publication creation was skipped", "err", err)
 	}
 
-	slotIsExists, err := l.slotIsExists()
+	ident, err := l.replicator.IdentifySystem()
+	if err != nil {
+		return fmt.Errorf("identify system: %w", err)
+	}
+
+	slotIsExists, err := l.slotIsExists(ctx)
 	if err != nil {
 		return fmt.Errorf("slot is exists: %w", err)
 	}
 
 	if !slotIsExists {
-		consistentPoint, _, err := l.replicator.CreateReplicationSlotEx(l.cfg.Listener.SlotName, pgOutputPlugin)
-		if err != nil {
+		if err = l.replicator.CreateReplicationSlotEx(l.cfg.Listener.SlotName, pgOutputPlugin); err != nil {
 			return fmt.Errorf("create replication slot: %w", err)
 		}
 
-		lsn, err := pgx.ParseLSN(consistentPoint)
-		if err != nil {
-			return fmt.Errorf("parse lsn: %w", err)
-		}
-
-		l.setLSN(lsn)
+		l.setLSN(ident.XLogPos)
 
 		logger.Info("new slot was created", slog.String("slot", l.cfg.Listener.SlotName))
 	} else {
@@ -254,7 +256,7 @@ func (l *Listener) checkConnection(ctx context.Context) error {
 		case <-ctx.Done():
 			l.log.Debug("check connection: context was canceled")
 
-			if err := l.Stop(); err != nil {
+			if err := l.Stop(ctx); err != nil {
 				l.log.Error("failed to stop service", "err", err)
 			}
 
@@ -264,8 +266,8 @@ func (l *Listener) checkConnection(ctx context.Context) error {
 }
 
 // slotIsExists checks whether a slot has already been created and if it has been created uses it.
-func (l *Listener) slotIsExists() (bool, error) {
-	restartLSNStr, err := l.repository.GetSlotLSN(l.cfg.Listener.SlotName)
+func (l *Listener) slotIsExists(ctx context.Context) (bool, error) {
+	restartLSNStr, err := l.repository.GetSlotLSN(ctx, l.cfg.Listener.SlotName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		l.log.Info("slot does not exist", slog.String("slot_name", l.cfg.Listener.SlotName))
 		return false, nil
@@ -284,7 +286,7 @@ func (l *Listener) slotIsExists() (bool, error) {
 		return false, nil
 	}
 
-	lsn, err := pgx.ParseLSN(*restartLSNStr)
+	lsn, err := pglogrepl.ParseLSN(*restartLSNStr)
 	if err != nil {
 		return false, fmt.Errorf("parse lsn: %w", err)
 	}
@@ -295,7 +297,7 @@ func (l *Listener) slotIsExists() (bool, error) {
 }
 
 const (
-	protoVersion    = "proto_version '1'"
+	protoVersion    = "proto_version '1'" //todo: 2 not supported in pg 13
 	publicationName = "wal-listener"
 )
 
@@ -311,9 +313,10 @@ func (l *Listener) Stream(ctx context.Context) error {
 	if err := l.replicator.StartReplication(
 		l.cfg.Listener.SlotName,
 		l.readLSN(),
-		-1,
 		protoVersion,
 		publicationNames(publicationName),
+		//"messages 'true'", todo: only in pg 15
+		//"streaming 'true'",
 	); err != nil {
 		return fmt.Errorf("start replication: %w", err)
 	}
@@ -336,7 +339,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude, l.cfg.Tags)
 
 	group, ctx := errgroup.WithContext(ctx)
-	messageChan := make(chan *pgx.ReplicationMessage, 20_000)
+	messageChan := make(chan *pgproto3.CopyData, 20_000)
 	eventsChan := make(chan *messageAndEvents, 20_000)
 	resultChan := make(chan *eventAndPublishResult, 20_000)
 
@@ -366,7 +369,6 @@ func (l *Listener) Stream(ctx context.Context) error {
 				return nil
 			}
 
-			l.log.Debug("waiting for replication message")
 			msg, err := l.replicator.WaitForReplicationMessage(ctx)
 			if err != nil {
 				return fmt.Errorf("wait for replication message: %w", err)
@@ -388,10 +390,34 @@ func (l *Listener) Stream(ctx context.Context) error {
 				l.log.Warn("stream: context canceled", "err", ctx.Err())
 				return nil
 			case msg := <-messageChan:
-				if msg.WalMessage != nil {
-					err := l.parser.ParseWalMessage(msg.WalMessage.WalData, tx)
+
+				switch msg.Data[0] {
+				case pglogrepl.PrimaryKeepaliveMessageByteID:
+					pkm, err := pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
+					if err != nil {
+						return fmt.Errorf("ParsePrimaryKeepaliveMessage failed: %w", err) //todo
+					}
+					l.log.Debug("Primary Keepalive Message", "ServerWALEnd", pkm.ServerWALEnd, "ServerTime", pkm.ServerTime, "ReplyRequested", pkm.ReplyRequested)
+
+					eventsChan <- &messageAndEvents{
+						pkm: &pkm,
+					}
+
+					l.processHeartBeat(ctx, &pkm)
+
+				case pglogrepl.XLogDataByteID:
+					xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
+					if err != nil {
+						return fmt.Errorf("ParseXLogData failed (data): %w", err)
+					}
+
+					err = l.parser.ParseWalMessage(xld.WALData, tx)
 					if err != nil {
 						l.monitor.IncProblematicEvents(problemKindParse)
+						if errors.Is(err, errEmptyWALMessage) {
+							l.log.Debug("warning: empty WAL message")
+							continue
+						}
 						return fmt.Errorf("parse: %w", err)
 					}
 
@@ -399,19 +425,12 @@ func (l *Listener) Stream(ctx context.Context) error {
 						events := tx.CreateEventsWithFilter(ctx)
 
 						eventsChan <- &messageAndEvents{
-							msg,
-							events,
+							xld:    &xld,
+							events: events,
 						}
 						tx.Clear()
 					}
-				} else if msg.ServerHeartbeat != nil {
-					eventsChan <- &messageAndEvents{
-						msg,
-						nil,
-					}
 				}
-
-				l.processHeartBeat(msg)
 			}
 		}
 	})
@@ -423,14 +442,15 @@ func (l *Listener) Stream(ctx context.Context) error {
 				l.log.Warn("stream: context canceled", "err", ctx.Err())
 				return nil
 			case object := <-eventsChan:
-				events, msg := object.events, object.msg
+				events, xld, pkm := object.events, object.xld, object.pkm
 
 				if len(events) == 0 {
 					resultChan <- &eventAndPublishResult{
 						subjectName: "",
 						event:       nil,
 						result:      nil,
-						msg:         msg,
+						xld:         xld,
+						pkm:         pkm,
 					}
 				}
 
@@ -445,7 +465,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 						slog.String("action", event.Action),
 						slog.String("schema", event.Schema),
 						slog.String("table", event.Table),
-						slog.Uint64("lsn", l.readLSN()),
+						slog.String("lsn", l.readLSN().String()),
 					)
 
 					// Include the message on the last event of the batch
@@ -454,13 +474,15 @@ func (l *Listener) Stream(ctx context.Context) error {
 							subjectName: subjectName,
 							event:       event,
 							result:      result,
-							msg:         msg,
+							xld:         xld,
+							pkm:         pkm,
 						}
 					} else {
 						resultChan <- &eventAndPublishResult{
 							subjectName: subjectName,
 							event:       event,
 							result:      result,
+							pkm:         pkm,
 						}
 					}
 				}
@@ -477,7 +499,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 				l.log.Warn("stream: context canceled", "err", ctx.Err())
 				return nil
 			case object := <-resultChan:
-				subjectName, result, event, msg := object.subjectName, object.result, object.event, object.msg
+				subjectName, result, event, xld, pkm := object.subjectName, object.result, object.event, object.xld, object.pkm
 
 				if result != nil {
 					_, err := result.Get(ctx)
@@ -501,20 +523,24 @@ func (l *Listener) Stream(ctx context.Context) error {
 							slog.String("action", event.Action),
 							slog.String("schema", event.Schema),
 							slog.String("table", event.Table),
-							slog.Uint64("lsn", l.readLSN()),
+							slog.String("lsn", l.readLSN().String()),
 						)
 					}
 					tx.pool.Put(event)
 				}
 
-				if msg != nil {
+				latest := latestWalStart.Load()
+				if pkm != nil {
+					walEnd := uint64(pkm.ServerWALEnd)
+					if walEnd > latest {
+						latestWalStart.Store(walEnd)
+					}
+				} else if xld != nil {
 					// We do not need to compare and swap here as there's only one thread
 					// writing to this value
-					latest := latestWalStart.Load()
-					if msg.WalMessage != nil && msg.WalMessage.WalStart > latest {
-						latestWalStart.Store(msg.WalMessage.WalStart)
-					} else if msg.ServerHeartbeat != nil && msg.ServerHeartbeat.ServerWalEnd > latest {
-						latestWalStart.Store(msg.ServerHeartbeat.ServerWalEnd)
+					walStart := uint64(xld.WALStart)
+					if xld.WALData != nil && walStart > latest {
+						latestWalStart.Store(walStart)
 					}
 				}
 			}
@@ -531,13 +557,13 @@ func (l *Listener) Stream(ctx context.Context) error {
 				return nil
 			case <-timer.C:
 				latest := latestWalStart.Load()
-				if latest > l.readLSN() {
-					if err := l.AckWalMessage(latest); err != nil {
+				if latest > uint64(l.readLSN()) {
+					if err := l.AckWalMessage(ctx, pglogrepl.LSN(latest)); err != nil {
 						l.monitor.IncProblematicEvents(problemKindAck)
 						return fmt.Errorf("ack: %w", err)
 					}
 
-					l.log.Debug("ack WAL message", slog.Uint64("lsn", l.readLSN()))
+					l.log.Debug("ack WAL message", slog.String("lsn", l.readLSN().String()))
 				}
 			}
 		}
@@ -546,21 +572,11 @@ func (l *Listener) Stream(ctx context.Context) error {
 	return group.Wait()
 }
 
-func (l *Listener) processHeartBeat(msg *pgx.ReplicationMessage) {
-	if msg.ServerHeartbeat == nil {
-		return
-	}
-
-	l.log.Debug(
-		"received server heartbeat",
-		slog.Uint64("server_wal_end", msg.ServerHeartbeat.ServerWalEnd),
-		slog.Uint64("server_time", msg.ServerHeartbeat.ServerTime),
-	)
-
-	if msg.ServerHeartbeat.ReplyRequested == 1 {
+func (l *Listener) processHeartBeat(ctx context.Context, pkm *pglogrepl.PrimaryKeepaliveMessage) {
+	if pkm.ReplyRequested {
 		l.log.Debug("status requested")
 
-		if err := l.SendStandbyStatus(); err != nil {
+		if err := l.SendStandbyStatus(ctx); err != nil {
 			l.log.Warn("send standby status", slog.String("error", err.Error()))
 		}
 	}
@@ -571,12 +587,12 @@ func publicationNames(publication string) string {
 }
 
 // Stop is a finalizer function.
-func (l *Listener) Stop() error {
-	if err := l.repository.Close(); err != nil {
+func (l *Listener) Stop(ctx context.Context) error {
+	if err := l.repository.Close(ctx); err != nil {
 		return fmt.Errorf("repository close: %w", err)
 	}
 
-	if err := l.replicator.Close(); err != nil {
+	if err := l.replicator.Close(ctx); err != nil {
 		return fmt.Errorf("replicator close: %w", err)
 	}
 
@@ -596,7 +612,7 @@ func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 			l.log.Warn("periodic heartbeats: context was canceled")
 			return
 		case <-heart.C:
-			if err := l.SendStandbyStatus(); err != nil {
+			if err := l.SendStandbyStatus(ctx); err != nil {
 				l.log.Error("failed to send heartbeat status", "err", err)
 				l.isAlive.Store(false)
 
@@ -610,18 +626,11 @@ func (l *Listener) SendPeriodicHeartbeats(ctx context.Context) {
 }
 
 // SendStandbyStatus sends a `StandbyStatus` object with the current RestartLSN value to the server.
-func (l *Listener) SendStandbyStatus() error {
+func (l *Listener) SendStandbyStatus(ctx context.Context) error {
 	lsn := l.readLSN()
 
 	return retry.Do(func() error {
-		standbyStatus, err := l.repository.NewStandbyStatus(lsn)
-		if err != nil {
-			return fmt.Errorf("unable to create StandbyStatus object: %w", err)
-		}
-
-		standbyStatus.ReplyRequested = 0
-
-		if err = l.replicator.SendStandbyStatus(standbyStatus); err != nil {
+		if err := l.replicator.SendStandbyStatus(ctx, lsn, false); err != nil {
 			return fmt.Errorf("unable to send StandbyStatus object: %w", err)
 		}
 
@@ -630,24 +639,24 @@ func (l *Listener) SendStandbyStatus() error {
 }
 
 // AckWalMessage acknowledge received wal message.
-func (l *Listener) AckWalMessage(lsn uint64) error {
+func (l *Listener) AckWalMessage(ctx context.Context, lsn pglogrepl.LSN) error {
 	l.setLSN(lsn)
 
-	if err := l.SendStandbyStatus(); err != nil {
+	if err := l.SendStandbyStatus(ctx); err != nil {
 		return fmt.Errorf("send status: %w", err)
 	}
 
 	return nil
 }
 
-func (l *Listener) readLSN() uint64 {
+func (l *Listener) readLSN() pglogrepl.LSN {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
 	return l.lsn
 }
 
-func (l *Listener) setLSN(lsn uint64) {
+func (l *Listener) setLSN(lsn pglogrepl.LSN) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

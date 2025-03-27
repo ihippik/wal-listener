@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/ihippik/wal-listener/v2/config"
-	"github.com/jackc/pgx/pgtype"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -58,7 +58,7 @@ func TestBinaryParser_readTupleData(t *testing.T) {
 				buffer: bytes.NewBuffer([]byte{0, 1, 117, 0, 0, 0, 1, 116}),
 			},
 			want: []TupleData{
-				{},
+				{IsUnchangedToastedValue: true},
 			},
 		},
 	}
