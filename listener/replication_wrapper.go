@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -20,11 +21,43 @@ func NewReplicationWrapper(conn *pgconn.PgConn, log *slog.Logger) *ReplicationWr
 }
 
 func (r *ReplicationWrapper) IdentifySystem() (pglogrepl.IdentifySystemResult, error) {
-	ident, err := pglogrepl.IdentifySystem(context.Background(), r.conn)
+	mrr := r.conn.Exec(context.Background(), "IDENTIFY_SYSTEM")
+
+	var isr pglogrepl.IdentifySystemResult
+	results, err := mrr.ReadAll()
 	if err != nil {
-		return pglogrepl.IdentifySystemResult{}, fmt.Errorf("cannot identify system: %w", err)
+		return isr, err
 	}
-	return ident, nil
+
+	if len(results) != 1 {
+		return isr, fmt.Errorf("expected 1 result set, got %d", len(results))
+	}
+
+	result := results[0]
+	if len(result.Rows) != 1 {
+		return isr, fmt.Errorf("expected 1 result row, got %d", len(result.Rows))
+	}
+
+	row := result.Rows[0]
+	if len(row) < 4 {
+		return isr, fmt.Errorf("expected at least 4 result columns, got %d", len(row))
+	}
+
+	isr.SystemID = string(row[0])
+	timeline, err := strconv.ParseInt(string(row[1]), 10, 32)
+	if err != nil {
+		return isr, fmt.Errorf("failed to parse timeline: %w", err)
+	}
+	isr.Timeline = int32(timeline)
+
+	isr.XLogPos, err = pglogrepl.ParseLSN(string(row[2]))
+	if err != nil {
+		return isr, fmt.Errorf("failed to parse xlogpos as LSN: %w", err)
+	}
+
+	isr.DBName = string(row[3])
+
+	return isr, nil
 }
 
 func (r *ReplicationWrapper) CreateReplicationSlotEx(slotName, outputPlugin string) error {
@@ -71,8 +104,8 @@ func (r *ReplicationWrapper) WaitForReplicationMessage(ctx context.Context) (*pg
 		return nil, fmt.Errorf("received unexpected message: %T", rawMsg)
 	}
 
-	//we run into pointer / data overwrite issues if we don't copy the data
-	var msgCopy = make([]byte, len(msg.Data))
+	// we run into pointer / data overwrite issues if we don't copy the data
+	msgCopy := make([]byte, len(msg.Data))
 	copy(msgCopy, msg.Data)
 
 	return &pgproto3.CopyData{Data: msgCopy}, nil
