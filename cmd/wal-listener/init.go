@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"net/url"
 
 	"github.com/ihippik/wal-listener/v2/config"
 	"github.com/ihippik/wal-listener/v2/publisher"
@@ -21,18 +22,36 @@ func initPgxConnections(ctx context.Context, cfg *config.DatabaseCfg, logger *sl
 		sslMode = "prefer"
 	}
 
-	connStringRepl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s&replication=database", cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, sslMode)
-
-	connString := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s", cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Name, sslMode)
-
-	pgxConf, err := pgx.ParseConfig(connString)
+	pgxConf, err := pgx.ParseConfig((&url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(cfg.User, cfg.Password),
+		Host:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Path:     fmt.Sprintf("/%s", cfg.Name),
+		RawQuery: fmt.Sprintf("sslmode=%s", sslMode),
+	}).String())
 	if err != nil {
 		return nil, nil, fmt.Errorf("parsing connection string: %w", err)
 	}
+
 	pgxConf.Tracer = NewTracerLogger(logger)
+
+	replPgConnConf, err := pgconn.ParseConfig((&url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(cfg.User, cfg.Password),
+		Host:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Path:     fmt.Sprintf("/%s", cfg.Name),
+		RawQuery: fmt.Sprintf("sslmode=%s&replication=database", sslMode),
+	}).String())
+	if err != nil {
+		return nil, nil, fmt.Errorf("parsing replication connection string: %w", err)
+	}
 
 	if cfg.SSL != nil {
 		pgxConf.TLSConfig = &tls.Config{
+			ServerName:         cfg.SSL.ServerName,
+			InsecureSkipVerify: cfg.SSL.SkipVerify,
+		}
+		replPgConnConf.TLSConfig = &tls.Config{
 			ServerName:         cfg.SSL.ServerName,
 			InsecureSkipVerify: cfg.SSL.SkipVerify,
 		}
@@ -43,7 +62,7 @@ func initPgxConnections(ctx context.Context, cfg *config.DatabaseCfg, logger *sl
 		return nil, nil, fmt.Errorf("db connection: %w", err)
 	}
 
-	replConn, err := pgconn.Connect(ctx, connStringRepl)
+	replConn, err := pgconn.ConnectConfig(ctx, replPgConnConf)
 	if err != nil {
 		return nil, nil, fmt.Errorf("replication connection: %w", err)
 	}
