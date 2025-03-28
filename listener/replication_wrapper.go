@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/gadget-inc/pglogrepl"
+	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 )
@@ -71,8 +71,8 @@ func (r *ReplicationWrapper) WaitForReplicationMessage(ctx context.Context) (*pg
 		return nil, fmt.Errorf("received unexpected message: %T", rawMsg)
 	}
 
-	// we run into pointer / data overwrite issues if we don't copy the data
-	msgCopy := make([]byte, len(msg.Data))
+	//we run into pointer / data overwrite issues if we don't copy the data
+	var msgCopy = make([]byte, len(msg.Data))
 	copy(msgCopy, msg.Data)
 
 	return &pgproto3.CopyData{Data: msgCopy}, nil

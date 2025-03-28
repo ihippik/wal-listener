@@ -2,9 +2,9 @@ package listener
 
 import (
 	"context"
-
-	"github.com/gadget-inc/pglogrepl"
+	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgproto3"
+
 	"github.com/stretchr/testify/mock"
 )
 
