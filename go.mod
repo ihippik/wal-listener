@@ -7,9 +7,9 @@ require (
 	github.com/IBM/sarama v1.43.0
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/avast/retry-go/v4 v4.6.0
+	github.com/gadget-inc/pglogrepl v0.0.0-20250328181620-88440c881556
 	github.com/google/uuid v1.6.0
 	github.com/ihippik/config v0.1.1
-	github.com/jackc/pglogrepl v0.0.0-20240307033717-828fbfe908e9
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/magiconair/properties v1.8.7
 	github.com/nats-io/nats.go v1.31.0
@@ -105,4 +105,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/jackc/pglogrepl => github.com/gadget-inc/pglogrepl v0.0.0-20250328174450-a8eba87a91a6
+exclude github.com/jackc/pglogrepl v0.0.0-20250325003938-6dfcde87cfc7

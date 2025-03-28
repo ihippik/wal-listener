@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gadget-inc/pglogrepl"
 	"github.com/ihippik/wal-listener/v2/config"
-	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/stretchr/testify/assert"

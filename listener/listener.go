@@ -14,9 +14,9 @@ import (
 	"time"
 
 	retry "github.com/avast/retry-go/v4"
+	"github.com/gadget-inc/pglogrepl"
 	"github.com/ihippik/wal-listener/v2/config"
 	"github.com/ihippik/wal-listener/v2/publisher"
-	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"golang.org/x/sync/errgroup"

@@ -53,8 +53,8 @@ github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHk
 github.com/frankban/quicktest v1.14.6/go.mod h1:4ptaffx2x8+WTWXmUCuVU6aPUX1/Mz7zb5vbUoiM6w0=
 github.com/fsnotify/fsnotify v1.7.0 h1:8JEhPFa5W2WU7YfeZzPNqzMP6Lwt7L2715Ggo0nosvA=
 github.com/fsnotify/fsnotify v1.7.0/go.mod h1:40Bi/Hjc2AVfZrqy+aj+yEI+/bRxZnMJyTJwOpGvigM=
-github.com/gadget-inc/pglogrepl v0.0.0-20250328174450-a8eba87a91a6 h1:OXOYSqmXpiegqLQNdflDOXELHbZ91h/x6y88K3f4V3g=
-github.com/gadget-inc/pglogrepl v0.0.0-20250328174450-a8eba87a91a6/go.mod h1:YC4Mb92BuoJKDNno/uRIBKU9FOt+y2uMFLQqo2fMgN4=
+github.com/gadget-inc/pglogrepl v0.0.0-20250328181620-88440c881556 h1:1aFy1HxnGYFOYy8c1K2+SR44NkiRVyNlb1way/vFit8=
+github.com/gadget-inc/pglogrepl v0.0.0-20250328181620-88440c881556/go.mod h1:d3NzyYb3+rTO27iyzQIcQiGg6Lre27gK8EI6jXG4uFU=
 github.com/getsentry/sentry-go v0.25.0 h1:q6Eo+hS+yoJlTO3uu/azhQadsD8V+jQn2D8VvX1eOyI=
 github.com/getsentry/sentry-go v0.25.0/go.mod h1:lc76E2QywIyW8WuBnwl8Lc4bkmQH4+w1gwTf25trprY=
 github.com/go-errors/errors v1.4.2 h1:J6MZopCL4uSllY1OfXM374weqZFFItUbrImctkmUxIA=
