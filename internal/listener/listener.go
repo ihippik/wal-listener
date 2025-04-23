@@ -221,7 +221,7 @@ func (l *Listener) Process(ctx context.Context) error {
 		return errReplDidNotStart
 	}
 
-	group := new(errgroup.Group)
+	group, ctx := errgroup.WithContext(ctx)
 
 	group.Go(func() error {
 		return l.Stream(ctx)
