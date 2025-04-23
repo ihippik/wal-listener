@@ -22,6 +22,17 @@ func initPgxConnections(cfg *config.DatabaseCfg, logger *slog.Logger) (*pgx.Conn
 		Database: cfg.Name,
 		User:     cfg.User,
 		Password: cfg.Password,
+		OnNotice: func(c *pgx.Conn, n *pgx.Notice) {
+			// ERROR: logical decoding cannot be used while in recovery (SQLSTATE 0A000)
+			if n.Code == "0A000" {
+				logger.Error("on notice handler: received error code 0A000, closing connection", "notice", n)
+				// close connection to properly prepare for exit
+				if err := c.Close(); err != nil {
+					logger.Error("on notice handler: unable to close connection", "err", err)
+				}
+				panic("on notice handler: received error code 0A000")
+			}
+		},
 	}
 
 	pgConn, err := pgx.Connect(pgxConf)
