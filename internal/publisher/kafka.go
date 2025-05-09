@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/IBM/sarama"
@@ -15,23 +16,43 @@ import (
 
 // KafkaPublisher represent event publisher with Kafka broker.
 type KafkaPublisher struct {
+	cfg      *config.PublisherCfg
+	log      *slog.Logger
 	producer sarama.SyncProducer
 }
 
 // NewKafkaPublisher return new KafkaPublisher instance.
-func NewKafkaPublisher(producer sarama.SyncProducer) *KafkaPublisher {
-	return &KafkaPublisher{producer: producer}
+func NewKafkaPublisher(cfg *config.PublisherCfg, logger *slog.Logger, producer sarama.SyncProducer) *KafkaPublisher {
+	return &KafkaPublisher{
+		cfg:      cfg,
+		log:      logger,
+		producer: producer,
+	}
 }
 
 func (p *KafkaPublisher) Publish(_ context.Context, topic string, event *Event) error {
+	var key []byte
+
 	data, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	if _, _, err = p.producer.SendMessage(prepareMessage(topic, data)); err != nil {
+	if p.cfg.IsMessageKeyExists() {
+		key = p.keyData(event)
+	}
+
+	partition, offset, err := p.producer.SendMessage(prepareMessage(topic, key, data))
+	if err != nil {
 		return fmt.Errorf("send message: %w", err)
 	}
+
+	p.log.Debug(
+		"kafka producer: message was sent",
+		slog.String("key", string(key)),
+		slog.Int64("offset", offset),
+		slog.Int("partition", int(partition)),
+	)
 
 	return nil
 }
@@ -41,10 +62,24 @@ func (p *KafkaPublisher) Close() error {
 	return p.producer.Close()
 }
 
+func (p *KafkaPublisher) keyData(e *Event) []byte {
+	if data, ok := e.Data[p.cfg.MessageKeyFrom]; ok {
+		key, _ := json.Marshal(data)
+		return key
+	}
+
+	return []byte(e.Table)
+}
+
 // NewProducer return new Kafka producer instance.
 func NewProducer(pCfg *config.PublisherCfg) (sarama.SyncProducer, error) {
 	cfg := sarama.NewConfig()
 	cfg.Producer.Partitioner = sarama.NewRandomPartitioner
+
+	if pCfg.IsMessageKeyExists() {
+		cfg.Producer.Partitioner = sarama.NewHashPartitioner
+	}
+
 	cfg.Producer.RequiredAcks = sarama.WaitForAll
 	cfg.Producer.Return.Successes = true
 
@@ -66,13 +101,19 @@ func NewProducer(pCfg *config.PublisherCfg) (sarama.SyncProducer, error) {
 	return producer, nil
 }
 
-// prepareMessage prepare message for Kafka producer.
-func prepareMessage(topic string, data []byte) *sarama.ProducerMessage {
-	return &sarama.ProducerMessage{
+// prepareMessage prepare sarama message for Kafka producer.
+func prepareMessage(topic string, key, data []byte) *sarama.ProducerMessage {
+	var msg = sarama.ProducerMessage{
 		Topic:     topic,
 		Partition: -1,
 		Value:     sarama.ByteEncoder(data),
 	}
+
+	if key != nil {
+		msg.Key = sarama.ByteEncoder(key)
+	}
+
+	return &msg
 }
 
 func newTLSCfg(certFile, keyFile, caCert string) (*tls.Config, error) {

@@ -30,9 +30,15 @@ As the message broker will be used is of your choice:
 - RabbitMQ [`type=rabbitmq`].
 - Google Pub/Sub [`type=google_pubsub`].
 
-Service publishes the following structure.
+The service publishes the following structure.
 The name of the topic for subscription to receive messages is formed from the prefix of the topic,
-the name of the database and the name of the table `prefix + schema_table`.
+the name of the database, and the name of the table `prefix + schema_table`.
+
+> If you are using Kafka, you may want to select a partition using a message key. 
+> You can do this in the producer configuration by specifying the **messageKeyFrom** variable, 
+> which will indicate from which table field to take the key. 
+> If there is no such field, the table name will be used.
+
 
 ```go
 {
@@ -51,7 +57,7 @@ Messages are published to the broker at least once!
 ### Filter configuration example
 
 ```yaml
-databases:
+listener:
   filter:
     tables:
       users:
@@ -63,8 +69,8 @@ This filter means that we only process events occurring with the `users` table,
 and in particular `insert` and `update` data.
 
 ### Topic mapping
-By default, output NATS topic name consist of prefix, DB schema, and DB table name,
-but if you want to send all update in one topic you should be configured the topic map:
+By default, the output NATS topic name consists of prefix, DB schema, and DB table name,
+but if you want to send all updates in one topic, you should be configured the topic map:
 ```yaml
 topicsMap:
   main_users: "notifier"

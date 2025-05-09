@@ -43,14 +43,19 @@ type ListenerCfg struct {
 // PublisherCfg represent configuration for any publisher types.
 type PublisherCfg struct {
 	Type            PublisherType `valid:"required"`
+	MessageKeyFrom  string
 	Address         string
 	Topic           string `valid:"required"`
 	TopicPrefix     string
-	EnableTLS       bool   `json:"enable_tls"`
-	ClientCert      string `json:"client_cert"`
-	ClientKey       string `json:"client_key"`
-	CACert          string `json:"ca_cert"`
-	PubSubProjectID string `json:"pubsub_project_id"`
+	EnableTLS       bool   `mapstructure:"enable_tls"`
+	ClientCert      string `mapstructure:"client_cert"`
+	ClientKey       string `mapstructure:"client_key"`
+	CACert          string `mapstructure:"ca_cert"`
+	PubSubProjectID string `mapstructure:"pubsub_project_id"`
+}
+
+func (c PublisherCfg) IsMessageKeyExists() bool {
+	return len(c.MessageKeyFrom) > 0
 }
 
 // DatabaseCfg path of the PostgreSQL DB config.
