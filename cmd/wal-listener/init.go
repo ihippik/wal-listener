@@ -66,7 +66,7 @@ type eventPublisher interface {
 	Close() error
 }
 
-// factoryPublisher represents a factory function for creating a eventPublisher.
+// factoryPublisher represents a factory function for creating an eventPublisher.
 func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slog.Logger) (eventPublisher, error) {
 	switch cfg.Type {
 	case config.PublisherTypeKafka:
@@ -75,7 +75,7 @@ func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slo
 			return nil, fmt.Errorf("kafka producer: %w", err)
 		}
 
-		return publisher.NewKafkaPublisher(producer), nil
+		return publisher.NewKafkaPublisher(cfg, logger, producer), nil
 	case config.PublisherTypeNats:
 		conn, err := nats.Connect(cfg.Address)
 		if err != nil {

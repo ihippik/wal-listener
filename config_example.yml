@@ -22,6 +22,7 @@ database:
   debug: false
 publisher:
   type: kafka
+  messageKeyFrom: some_table_field # Kafka only
   address: localhost:4222
   enable_tls: true # Kafka only
   client_cert: "cert.pem" # Kafka only
