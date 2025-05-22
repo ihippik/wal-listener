@@ -279,7 +279,7 @@ func (w *WalTransaction) CreateEventsWithFilter(ctx context.Context) []*publishe
 		event.Action = item.Kind.string()
 		event.Data = data
 		event.DataOld = dataOld
-		event.EventTime = *w.CommitTime
+		event.EventTime = time.Now()
 		event.UnchangedToastedValues = unchangedToastedValues
 		event.Tags = w.tags
 
