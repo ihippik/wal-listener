@@ -427,15 +427,17 @@ func (l *Listener) Stream(ctx context.Context) error {
 						return fmt.Errorf("parse: %w", err)
 					}
 
-					if tx.CommitTime != nil {
-						events := tx.CreateEventsWithFilter(ctx)
-
-						eventsChan <- &messageAndEvents{
-							xld:    &xld,
-							events: events,
-						}
-						tx.Clear()
+					// TODO buffering will be necessary for streaming messages, but since we're only on protocol version 1
+					//   and using async replication, all messages have been committed on the primary.
+					//   See https://www.postgresql.org/docs/current/warm-standby.html#SYNCHRONOUS-REPLICATION
+					// if tx.CommitTime != nil {
+					events := tx.CreateEventsWithFilter(ctx)
+					eventsChan <- &messageAndEvents{
+						xld:    &xld,
+						events: events,
 					}
+					tx.Clear()
+					// }
 				}
 			}
 		}
