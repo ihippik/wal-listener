@@ -106,6 +106,8 @@ func NewWalListener(
 		repository: repo,
 		replicator: repl,
 		parser:     parser,
+		isAlive:    atomic.Bool{},
+		lsn:        0,
 	}
 }
 
@@ -216,8 +218,7 @@ func (l *Listener) Process(ctx context.Context) error {
 		}
 
 		l.setLSN(ident.XLogPos)
-
-		logger.Info("new slot was created", slog.String("slot", l.cfg.Listener.SlotName))
+		logger.Info("new slot was created", slog.String("slot", l.cfg.Listener.SlotName), slog.String("lsn", ident.XLogPos.String()), slog.Uint64("lsn_uint64", uint64(ident.XLogPos)))
 	} else {
 		logger.Info("slot already exists, LSN updated")
 	}
@@ -292,6 +293,7 @@ func (l *Listener) slotIsExists(ctx context.Context) (bool, error) {
 	}
 
 	l.setLSN(lsn)
+	l.log.Info("LSN set from existing slot", slog.String("lsn", lsn.String()), slog.Uint64("lsn_uint64", uint64(lsn)))
 
 	return true, nil
 }
@@ -310,9 +312,11 @@ const (
 // Stream receive event from PostgreSQL.
 // Accept message, apply filter and  publish it in NATS server.
 func (l *Listener) Stream(ctx context.Context) error {
+	currentLSN := l.readLSN()
+	l.log.Info("Starting replication", slog.String("lsn", currentLSN.String()), slog.Uint64("lsn_uint64", uint64(currentLSN)))
 	if err := l.replicator.StartReplication(
 		l.cfg.Listener.SlotName,
-		l.readLSN(),
+		currentLSN,
 		protoVersion,
 		publicationNames(publicationName),
 		//"messages 'true'", todo: only in pg 15

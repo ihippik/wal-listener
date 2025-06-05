@@ -19,7 +19,7 @@ func (r *replicatorMock) IdentifySystem() (pglogrepl.IdentifySystemResult, error
 
 func (r *replicatorMock) CreateReplicationSlotEx(slotName, outputPlugin string) error {
 	args := r.Called(slotName, outputPlugin)
-	return args.Error(2)
+	return args.Error(0)
 }
 
 func (r *replicatorMock) DropReplicationSlot(slotName string) (err error) {

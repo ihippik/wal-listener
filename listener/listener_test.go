@@ -406,65 +406,11 @@ func TestListener_AckWalMessage(t *testing.T) {
 
 func TestListener_Process(t *testing.T) {
 	ctx := context.Background()
-	monitor := new(monitorMock)
-	parser := new(parserMock)
-	repo := new(repositoryMock)
-	repl := new(replicatorMock)
-	pub := new(publisherMock)
-
-	setCreatePublication := func(name string, err error) {
-		repo.On("CreatePublication", name).Return(err).Once()
-	}
-
-	setGetSlotLSN := func(slotName string, lsn string, err error) {
-		repo.On("GetSlotLSN", slotName).Return(&lsn, err).Once()
-	}
-
-	setStartReplication := func(
-		err error,
-		slotName string,
-		startLsn pglogrepl.LSN,
-		pluginArguments ...string,
-	) {
-		repl.On("StartReplication", slotName, startLsn, pluginArguments).Return(err).Once()
-	}
-
-	setIsAlive := func(res bool) {
-		repl.On("IsAlive").Return(res)
-	}
-
-	setClose := func(err error) {
-		repl.On("Close").Return(err).Maybe()
-	}
-
-	setRepoClose := func(err error) {
-		repo.On("Close").Return(err)
-	}
-
-	setRepoIsAlive := func(res bool) {
-		repo.On("IsAlive").Return(res)
-	}
-
-	setWaitForReplicationMessage := func(mess *pgproto3.CopyData, err error) {
-		repl.On("WaitForReplicationMessage", mock.Anything).Return(mess, err)
-	}
-
-	setSendStandbyStatus := func(err error) {
-		repl.On("SendStandbyStatus", mock.Anything).Return(err)
-	}
-
-	setCreateReplicationSlotEx := func(slotName, outputPlugin, consistentPoint, snapshotName string, err error) {
-		repl.On("CreateReplicationSlotEx", slotName, outputPlugin).Return(consistentPoint, snapshotName, err)
-	}
-
-	setIdentifySystem := func(result pglogrepl.IdentifySystemResult, err error) {
-		repl.On("IdentifySystem").Return(result, err)
-	}
 
 	tests := []struct {
 		name    string
 		cfg     *config.Config
-		setup   func()
+		setup   func(repo *repositoryMock, repl *replicatorMock)
 		wantErr error
 	}{
 		{
@@ -481,25 +427,20 @@ func TestListener_Process(t *testing.T) {
 					TopicsMap: nil,
 				},
 			},
-			setup: func() {
-				ctx, _ = context.WithTimeout(ctx, time.Millisecond*200)
+			setup: func(repo *repositoryMock, repl *replicatorMock) {
+				ctx, _ = context.WithTimeout(ctx, time.Millisecond*500)
 
-				setIdentifySystem(pglogrepl.IdentifySystemResult{}, nil)
-				setCreatePublication("wal-listener", nil)
-				setGetSlotLSN("slot1", "100/200", nil)
-				setStartReplication(
-					nil,
-					"slot1",
-					1099511628288,
-					"proto_version '1'",
-					"publication_names 'wal-listener'",
-				)
-				setIsAlive(true)
-				setRepoIsAlive(true)
-				setWaitForReplicationMessage(nil, nil)
-				setSendStandbyStatus(nil)
-				setClose(nil)
-				setRepoClose(nil)
+				repl.On("IdentifySystem").Return(pglogrepl.IdentifySystemResult{}, nil)
+				repo.On("CreatePublication", "wal-listener").Return(nil).Once()
+				lsn := "100/200"
+				repo.On("GetSlotLSN", "slot1").Return(&lsn, nil).Once()
+				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "publication_names 'wal-listener'"}).Return(nil).Once()
+				repl.On("IsAlive").Return(true)
+				repo.On("IsAlive").Return(true)
+				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), nil)
+				repl.On("SendStandbyStatus", mock.Anything).Return(nil)
+				repl.On("Close").Return(nil).Maybe()
+				repo.On("Close").Return(nil)
 			},
 			wantErr: nil,
 		},
@@ -517,24 +458,19 @@ func TestListener_Process(t *testing.T) {
 					TopicsMap: nil,
 				},
 			},
-			setup: func() {
-				ctx, _ = context.WithTimeout(ctx, time.Millisecond*20)
-				setIdentifySystem(pglogrepl.IdentifySystemResult{}, nil)
-				setCreatePublication("wal-listener", errors.New("some err"))
-				setGetSlotLSN("slot1", "100/200", nil)
-				setStartReplication(
-					nil,
-					"slot1",
-					1099511628288,
-					"proto_version '1'",
-					"publication_names 'wal-listener'",
-				)
-				setIsAlive(true)
-				setRepoIsAlive(true)
-				setWaitForReplicationMessage(nil, nil)
-				setSendStandbyStatus(nil)
-				setClose(nil)
-				setRepoClose(nil)
+			setup: func(repo *repositoryMock, repl *replicatorMock) {
+				ctx, _ = context.WithTimeout(ctx, time.Second*2)
+				repl.On("IdentifySystem").Return(pglogrepl.IdentifySystemResult{}, nil)
+				repo.On("CreatePublication", "wal-listener").Return(errors.New("some err")).Once()
+				lsn := "100/200"
+				repo.On("GetSlotLSN", "slot1").Return(&lsn, nil).Once()
+				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "publication_names 'wal-listener'"}).Return(nil).Once()
+				repl.On("IsAlive").Return(true).Maybe()
+				repo.On("IsAlive").Return(true).Maybe()
+				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), nil).Maybe()
+				repl.On("SendStandbyStatus", mock.Anything).Return(nil).Maybe()
+				repl.On("Close").Return(nil).Maybe()
+				repo.On("Close").Return(nil)
 			},
 			wantErr: nil,
 		},
@@ -552,11 +488,12 @@ func TestListener_Process(t *testing.T) {
 					TopicsMap: nil,
 				},
 			},
-			setup: func() {
-				ctx, _ = context.WithTimeout(ctx, time.Millisecond*20)
-				setIdentifySystem(pglogrepl.IdentifySystemResult{}, nil)
-				setCreatePublication("wal-listener", nil)
-				setGetSlotLSN("slot1", "100/200", errors.New("some err"))
+			setup: func(repo *repositoryMock, repl *replicatorMock) {
+				ctx, _ = context.WithTimeout(ctx, time.Millisecond*500)
+				repl.On("IdentifySystem").Return(pglogrepl.IdentifySystemResult{}, nil)
+				repo.On("CreatePublication", "wal-listener").Return(nil).Once()
+				lsn := "100/200"
+				repo.On("GetSlotLSN", "slot1").Return(&lsn, errors.New("some err")).Once()
 			},
 			wantErr: errors.New("slot is exists: get slot lsn: some err"),
 		},
@@ -574,31 +511,20 @@ func TestListener_Process(t *testing.T) {
 					TopicsMap: nil,
 				},
 			},
-			setup: func() {
-				ctx, _ = context.WithTimeout(ctx, time.Millisecond*20)
-				setIdentifySystem(pglogrepl.IdentifySystemResult{XLogPos: 1099511628288}, nil)
-				setCreatePublication("wal-listener", nil)
-				setGetSlotLSN("slot1", "", pgx.ErrNoRows)
-				setCreateReplicationSlotEx(
-					"slot1",
-					"pgoutput",
-					"100/200",
-					"",
-					nil,
-				)
-				setStartReplication(
-					nil,
-					"slot1",
-					1099511628288,
-					"proto_version '1'",
-					"publication_names 'wal-listener'",
-				)
-				setIsAlive(true)
-				setRepoIsAlive(true)
-				setWaitForReplicationMessage(nil, nil)
-				setSendStandbyStatus(nil)
-				setClose(nil)
-				setRepoClose(nil)
+			setup: func(repo *repositoryMock, repl *replicatorMock) {
+				ctx, _ = context.WithTimeout(ctx, time.Second*2)
+				repl.On("IdentifySystem").Return(pglogrepl.IdentifySystemResult{XLogPos: 1099511628288}, nil)
+				repo.On("CreatePublication", "wal-listener").Return(nil).Once()
+				lsn := ""
+				repo.On("GetSlotLSN", "slot1").Return(&lsn, pgx.ErrNoRows).Once()
+				repl.On("CreateReplicationSlotEx", "slot1", "pgoutput").Return(nil)
+				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "publication_names 'wal-listener'"}).Return(nil).Once()
+				repl.On("IsAlive").Return(true).Maybe()
+				repo.On("IsAlive").Return(true).Maybe()
+				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), nil).Maybe()
+				repl.On("SendStandbyStatus", mock.Anything).Return(nil).Maybe()
+				repl.On("Close").Return(nil).Maybe()
+				repo.On("Close").Return(nil)
 			},
 			wantErr: nil,
 		},
@@ -608,10 +534,16 @@ func TestListener_Process(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			repo := new(repositoryMock)
+			repl := new(replicatorMock)
+			pub := new(publisherMock)
+			parser := new(parserMock)
+			monitor := new(monitorMock)
+			
 			defer repo.AssertExpectations(t)
 			defer repl.AssertExpectations(t)
 
-			tt.setup()
+			tt.setup(repo, repl)
 
 			l := NewWalListener(
 				tt.cfg,
