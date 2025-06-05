@@ -1,0 +1,24 @@
+listener:
+  slotName: integration_test_slot
+  refreshConnection: 30s
+  heartbeatInterval: 10s
+  dropForeignOrigin: true
+  skipTransactionBuffering: false
+  topicsMap:
+    /(.+)/: "all"
+logger:
+  level: info
+  fmt: json
+database:
+  host: postgres_primary
+  port: 5432
+  name: test_db
+  user: postgres
+  password: postgres
+publisher:
+  type: stdout
+  topic: "integration_test"
+monitoring:
+  promAddr: ":2112"
+tags:
+  test: "integration"
