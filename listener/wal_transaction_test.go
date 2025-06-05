@@ -615,3 +615,67 @@ func TestWalTransaction_SetOrigin(t *testing.T) {
 		})
 	}
 }
+
+func TestWalTransaction_OriginStateManagement(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	t.Run("origin state across multiple transactions with Clear()", func(t *testing.T) {
+		tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, true)
+
+		tx.SetOrigin("foreign_origin", true)
+		assert.Equal(t, "foreign_origin", tx.origin)
+		assert.Equal(t, true, tx.ShouldDropMessage())
+
+		// Clear transaction (simulates transaction end)
+		tx.Clear()
+		assert.Equal(t, "", tx.origin)
+		assert.Equal(t, false, tx.ShouldDropMessage())
+
+		assert.Equal(t, false, tx.ShouldDropMessage()) // Should not drop when no origin
+	})
+
+	t.Run("origin state across multiple transactions with ClearActions()", func(t *testing.T) {
+		tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, true)
+
+		tx.SetOrigin("foreign_origin", true)
+		tx.Actions = []ActionData{{Schema: "test", Table: "table", Kind: ActionKindInsert}}
+		
+		assert.Equal(t, "foreign_origin", tx.origin)
+		assert.Equal(t, true, tx.ShouldDropMessage())
+		assert.Equal(t, 1, len(tx.Actions))
+
+		tx.ClearActions()
+		assert.Equal(t, "foreign_origin", tx.origin) // Origin preserved
+		assert.Equal(t, true, tx.ShouldDropMessage()) // Should still drop
+		assert.Equal(t, 0, len(tx.Actions)) // Actions cleared
+	})
+
+	t.Run("consecutive transactions with different origins", func(t *testing.T) {
+		tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, true)
+
+		tx.SetOrigin("foreign_db", true)
+		assert.Equal(t, true, tx.ShouldDropMessage())
+		tx.Clear()
+
+		assert.Equal(t, false, tx.ShouldDropMessage())
+		tx.Clear()
+
+		tx.SetOrigin("another_foreign_db", true)
+		assert.Equal(t, true, tx.ShouldDropMessage())
+		tx.Clear()
+
+		assert.Equal(t, false, tx.ShouldDropMessage())
+	})
+
+	t.Run("origin filtering with dropForeignOrigin disabled", func(t *testing.T) {
+		tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, false)
+
+		tx.SetOrigin("foreign_origin", false)
+		assert.Equal(t, "foreign_origin", tx.origin)
+		assert.Equal(t, false, tx.ShouldDropMessage())
+
+		tx.Clear()
+
+		assert.Equal(t, false, tx.ShouldDropMessage())
+	})
+}

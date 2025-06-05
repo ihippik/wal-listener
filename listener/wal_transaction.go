@@ -178,7 +178,13 @@ func (w *WalTransaction) SetOrigin(origin string, dropForeignOrigin bool) {
 
 // ShouldDropMessage returns true if the message should be dropped based on origin
 func (w *WalTransaction) ShouldDropMessage() bool {
-	return w.dropForeignOrigin && w.origin != ""
+	shouldDrop := w.dropForeignOrigin && w.origin != ""
+	if shouldDrop {
+		w.log.Info("dropping message due to foreign origin", 
+			slog.String("origin", w.origin),
+			slog.Bool("dropForeignOrigin", w.dropForeignOrigin))
+	}
+	return shouldDrop
 }
 
 // Clear transaction data.
