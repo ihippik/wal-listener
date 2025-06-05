@@ -45,21 +45,26 @@ type WalTransaction struct {
 	includeTableMap map[string][]string
 	excludes        config.ExcludeStruct
 	tags            map[string]string
+
+	// Origin tracking
+	origin            string
+	dropForeignOrigin bool
 }
 
 // NewWalTransaction create and initialize new WAL transaction.
-func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor, includeTableMap map[string][]string, excludes config.ExcludeStruct, tags map[string]string) *WalTransaction {
+func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor, includeTableMap map[string][]string, excludes config.ExcludeStruct, tags map[string]string, dropForeignOrigin bool) *WalTransaction {
 	const aproxData = 300
 
 	return &WalTransaction{
-		pool:            pool,
-		log:             log,
-		monitor:         monitor,
-		RelationStore:   make(map[int32]RelationData),
-		Actions:         make([]ActionData, 0, aproxData),
-		includeTableMap: includeTableMap,
-		excludes:        excludes,
-		tags:            tags,
+		pool:              pool,
+		log:               log,
+		monitor:           monitor,
+		RelationStore:     make(map[int32]RelationData),
+		Actions:           make([]ActionData, 0, aproxData),
+		includeTableMap:   includeTableMap,
+		excludes:          excludes,
+		tags:              tags,
+		dropForeignOrigin: dropForeignOrigin,
 	}
 }
 
@@ -165,10 +170,27 @@ func (c *Column) AssertValue(src []byte) {
 	c.value = val
 }
 
+// SetOrigin sets the origin of the transaction and configures dropping behavior
+func (w *WalTransaction) SetOrigin(origin string, dropForeignOrigin bool) {
+	w.origin = origin
+	w.dropForeignOrigin = dropForeignOrigin
+}
+
+// ShouldDropMessage returns true if the message should be dropped based on origin
+func (w *WalTransaction) ShouldDropMessage() bool {
+	return w.dropForeignOrigin && w.origin != ""
+}
+
 // Clear transaction data.
 func (w *WalTransaction) Clear() {
 	w.CommitTime = nil
 	w.BeginTime = nil
+	w.Actions = nil
+	w.origin = "" // Reset origin on transaction clear
+}
+
+// ClearActions clears only the actions but preserves transaction state like origin
+func (w *WalTransaction) ClearActions() {
 	w.Actions = nil
 }
 

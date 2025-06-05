@@ -340,7 +340,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 		}
 	}()
 
-	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude, l.cfg.Tags)
+	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude, l.cfg.Tags, l.cfg.Listener.DropForeignOrigin)
 
 	group, ctx := errgroup.WithContext(ctx)
 	messageChan := make(chan *pgproto3.CopyData, 20_000)
@@ -431,17 +431,23 @@ func (l *Listener) Stream(ctx context.Context) error {
 						return fmt.Errorf("parse: %w", err)
 					}
 
-					// TODO buffering will be necessary for streaming messages, but since we're only on protocol version 1
-					//   and using async replication, all messages have been committed on the primary.
-					//   See https://www.postgresql.org/docs/current/warm-standby.html#SYNCHRONOUS-REPLICATION
-					// if tx.CommitTime != nil {
-					events := tx.CreateEventsWithFilter(ctx)
-					eventsChan <- &messageAndEvents{
-						xld:    &xld,
-						events: events,
+					// once the transaction is committed, or if we're in the no buffering mode, retrieve all the events and emit them to the publisher
+					// buffering will be necessary for streaming messages, but if we're only on protocol version 1 and using async replication, all messages have been committed on the primary, so they're safe to emit as they are seen.
+					// See https://www.postgresql.org/docs/current/warm-standby.html#SYNCHRONOUS-REPLICATION
+					if l.cfg.Listener.SkipTransactionBuffering || tx.CommitTime != nil {
+						events := tx.CreateEventsWithFilter(ctx)
+						eventsChan <- &messageAndEvents{
+							xld:    &xld,
+							events: events,
+						}
+
+						// On commit, reset the entire transaction struct for re-use. Otherwise, we're in the unbuffered mode, so just clear the actions which we've emitted above.
+						if tx.CommitTime != nil {
+							tx.Clear()
+						} else {
+							tx.ClearActions()
+						}
 					}
-					tx.Clear()
-					// }
 				}
 			}
 		}

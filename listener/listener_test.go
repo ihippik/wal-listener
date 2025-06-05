@@ -405,13 +405,13 @@ func TestListener_AckWalMessage(t *testing.T) {
 }
 
 func TestListener_Process(t *testing.T) {
-	ctx := context.Background()
-
 	tests := []struct {
-		name    string
-		cfg     *config.Config
-		setup   func(repo *repositoryMock, repl *replicatorMock)
-		wantErr error
+		name            string
+		cfg             *config.Config
+		setup           func(repo *repositoryMock, repl *replicatorMock)
+		wantErr         error
+		useTimeout      bool
+		timeoutDuration time.Duration
 	}{
 		{
 			name: "success",
@@ -421,6 +421,7 @@ func TestListener_Process(t *testing.T) {
 					AckTimeout:        0,
 					RefreshConnection: 1,
 					HeartbeatInterval: 2,
+					DropForeignOrigin: false,
 					Include: config.IncludeStruct{
 						Tables: nil,
 					},
@@ -428,21 +429,21 @@ func TestListener_Process(t *testing.T) {
 				},
 			},
 			setup: func(repo *repositoryMock, repl *replicatorMock) {
-				ctx, _ = context.WithTimeout(ctx, time.Millisecond*500)
-
 				repl.On("IdentifySystem").Return(pglogrepl.IdentifySystemResult{}, nil)
 				repo.On("CreatePublication", "wal-listener").Return(nil).Once()
 				lsn := "100/200"
 				repo.On("GetSlotLSN", "slot1").Return(&lsn, nil).Once()
 				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "publication_names 'wal-listener'"}).Return(nil).Once()
-				repl.On("IsAlive").Return(true)
-				repo.On("IsAlive").Return(true)
-				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), nil)
-				repl.On("SendStandbyStatus", mock.Anything).Return(nil)
+				repl.On("IsAlive").Return(true).Maybe()
+				repo.On("IsAlive").Return(true).Maybe()
+				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), nil).Maybe()
+				repl.On("SendStandbyStatus", mock.Anything).Return(nil).Maybe()
 				repl.On("Close").Return(nil).Maybe()
 				repo.On("Close").Return(nil)
 			},
-			wantErr: nil,
+			wantErr:         nil,
+			useTimeout:      true,
+			timeoutDuration: time.Second * 2,
 		},
 		{
 			name: "skip create publication",
@@ -452,6 +453,7 @@ func TestListener_Process(t *testing.T) {
 					AckTimeout:        0,
 					RefreshConnection: 1,
 					HeartbeatInterval: 2,
+					DropForeignOrigin: false,
 					Include: config.IncludeStruct{
 						Tables: nil,
 					},
@@ -459,7 +461,6 @@ func TestListener_Process(t *testing.T) {
 				},
 			},
 			setup: func(repo *repositoryMock, repl *replicatorMock) {
-				ctx, _ = context.WithTimeout(ctx, time.Second*2)
 				repl.On("IdentifySystem").Return(pglogrepl.IdentifySystemResult{}, nil)
 				repo.On("CreatePublication", "wal-listener").Return(errors.New("some err")).Once()
 				lsn := "100/200"
@@ -467,12 +468,14 @@ func TestListener_Process(t *testing.T) {
 				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "publication_names 'wal-listener'"}).Return(nil).Once()
 				repl.On("IsAlive").Return(true).Maybe()
 				repo.On("IsAlive").Return(true).Maybe()
-				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), nil).Maybe()
+				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), context.Canceled).Maybe()
 				repl.On("SendStandbyStatus", mock.Anything).Return(nil).Maybe()
 				repl.On("Close").Return(nil).Maybe()
 				repo.On("Close").Return(nil)
 			},
-			wantErr: nil,
+			wantErr:         nil,
+			useTimeout:      true,
+			timeoutDuration: time.Second * 2,
 		},
 		{
 			name: "get slot error",
@@ -482,6 +485,7 @@ func TestListener_Process(t *testing.T) {
 					AckTimeout:        0,
 					RefreshConnection: 1,
 					HeartbeatInterval: 2,
+					DropForeignOrigin: false,
 					Include: config.IncludeStruct{
 						Tables: nil,
 					},
@@ -489,13 +493,13 @@ func TestListener_Process(t *testing.T) {
 				},
 			},
 			setup: func(repo *repositoryMock, repl *replicatorMock) {
-				ctx, _ = context.WithTimeout(ctx, time.Millisecond*500)
 				repl.On("IdentifySystem").Return(pglogrepl.IdentifySystemResult{}, nil)
 				repo.On("CreatePublication", "wal-listener").Return(nil).Once()
 				lsn := "100/200"
 				repo.On("GetSlotLSN", "slot1").Return(&lsn, errors.New("some err")).Once()
 			},
-			wantErr: errors.New("slot is exists: get slot lsn: some err"),
+			wantErr:    errors.New("slot is exists: get slot lsn: some err"),
+			useTimeout: false,
 		},
 		{
 			name: "slot does not exists",
@@ -505,6 +509,7 @@ func TestListener_Process(t *testing.T) {
 					AckTimeout:        0,
 					RefreshConnection: 1,
 					HeartbeatInterval: 2,
+					DropForeignOrigin: false,
 					Include: config.IncludeStruct{
 						Tables: nil,
 					},
@@ -512,7 +517,6 @@ func TestListener_Process(t *testing.T) {
 				},
 			},
 			setup: func(repo *repositoryMock, repl *replicatorMock) {
-				ctx, _ = context.WithTimeout(ctx, time.Second*2)
 				repl.On("IdentifySystem").Return(pglogrepl.IdentifySystemResult{XLogPos: 1099511628288}, nil)
 				repo.On("CreatePublication", "wal-listener").Return(nil).Once()
 				lsn := ""
@@ -521,12 +525,14 @@ func TestListener_Process(t *testing.T) {
 				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "publication_names 'wal-listener'"}).Return(nil).Once()
 				repl.On("IsAlive").Return(true).Maybe()
 				repo.On("IsAlive").Return(true).Maybe()
-				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), nil).Maybe()
+				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), context.Canceled).Maybe()
 				repl.On("SendStandbyStatus", mock.Anything).Return(nil).Maybe()
 				repl.On("Close").Return(nil).Maybe()
 				repo.On("Close").Return(nil)
 			},
-			wantErr: nil,
+			wantErr:         nil,
+			useTimeout:      true,
+			timeoutDuration: time.Second * 2,
 		},
 	}
 
@@ -554,6 +560,16 @@ func TestListener_Process(t *testing.T) {
 				parser,
 				monitor,
 			)
+
+			var ctx context.Context
+			var cancel context.CancelFunc
+
+			if tt.useTimeout {
+				ctx, cancel = context.WithTimeout(context.Background(), tt.timeoutDuration)
+				defer cancel()
+			} else {
+				ctx = context.Background()
+			}
 
 			err := l.Process(ctx)
 			if err != nil && assert.Error(t, tt.wantErr, err.Error()) {

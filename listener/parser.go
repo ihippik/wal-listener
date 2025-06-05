@@ -60,8 +60,14 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		tx.CommitTime = &commit.Timestamp
 	case OriginMsgType:
-		p.log.Debug("origin type message was received")
+		origin := p.getOriginMsg()
+		p.log.Debug("origin type message was received", slog.String("origin", origin))
+		tx.SetOrigin(origin, tx.dropForeignOrigin)
 	case RelationMsgType:
+		if tx.ShouldDropMessage() {
+			p.log.Debug("dropping relation message due to foreign origin", slog.String("origin", tx.origin))
+			return nil
+		}
 		relation := p.getRelationMsg()
 
 		p.log.Debug(
@@ -91,8 +97,16 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		tx.RelationStore[relation.ID] = rd
 	case TypeMsgType:
+		if tx.ShouldDropMessage() {
+			p.log.Debug("dropping type message due to foreign origin", slog.String("origin", tx.origin))
+			return nil
+		}
 		p.log.Debug("type message was received")
 	case InsertMsgType:
+		if tx.ShouldDropMessage() {
+			p.log.Debug("dropping insert message due to foreign origin", slog.String("origin", tx.origin))
+			return nil
+		}
 		insert := p.getInsertMsg()
 
 		p.log.Debug(
@@ -112,6 +126,10 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		tx.Actions = append(tx.Actions, action)
 	case UpdateMsgType:
+		if tx.ShouldDropMessage() {
+			p.log.Debug("dropping update message due to foreign origin", slog.String("origin", tx.origin))
+			return nil
+		}
 		upd := p.getUpdateMsg()
 
 		p.log.Debug("update type message was received", slog.Any("relation_id", upd.RelationID))
@@ -128,6 +146,10 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		tx.Actions = append(tx.Actions, action)
 	case DeleteMsgType:
+		if tx.ShouldDropMessage() {
+			p.log.Debug("dropping delete message due to foreign origin", slog.String("origin", tx.origin))
+			return nil
+		}
 		del := p.getDeleteMsg()
 
 		p.log.Debug(
@@ -147,6 +169,10 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		tx.Actions = append(tx.Actions, action)
 	case TruncateMsgType:
+		if tx.ShouldDropMessage() {
+			p.log.Debug("dropping truncate message due to foreign origin", slog.String("origin", tx.origin))
+			return nil
+		}
 		truncateMessages := p.getTruncateMessages()
 		p.log.Debug("truncate type message was received")
 
@@ -237,6 +263,10 @@ func (p *BinaryParser) getRelationMsg() Relation {
 		Replica:   p.readInt8(),
 		Columns:   p.readColumns(),
 	}
+}
+
+func (p *BinaryParser) getOriginMsg() string {
+	return p.readString()
 }
 
 func (p *BinaryParser) readInt32() (val int32) {
