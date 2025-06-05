@@ -146,7 +146,9 @@ By default, `wal-listener` will publish all messages that pass your filters from
 
 If you'd like to ignore messages that originate on these upstream databases, set `listener.dropForeignOrigin: true`.
 
-Here's what that might look like:
+__NOTE__: `listener.dropForeignOrigin` only works on Postgres v16 or later, as Postgres only sends the required replication messages on this version.
+
+Here's what the setup might look like:
 
 ```
                                                  
