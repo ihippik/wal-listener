@@ -1055,6 +1055,90 @@ func TestBinaryParser_ParseWalMessage_DropForeignOrigin(t *testing.T) {
 			wantOrigin:       "",
 			wantErr:          false,
 		},
+		{
+			name:              "multiple data messages after origin - drop enabled",
+			dropForeignOrigin: true,
+			messages: [][]byte{
+				// Origin message: OriginMsgType + "foreign_origin\0"
+				{byte(OriginMsgType), 102, 111, 114, 101, 105, 103, 110, 95, 111, 114, 105, 103, 105, 110, 0},
+				// Multiple insert messages should all be dropped
+				{
+					byte(InsertMsgType),
+					0, 0, 0, 1, // relation id
+					78,   // N flag
+					0, 1, // 1 column
+					116,        // text type
+					0, 0, 0, 4, // 4 bytes
+					116, 101, 115, 116, // "test"
+				},
+				{
+					byte(InsertMsgType),
+					0, 0, 0, 1, // relation id
+					78,   // N flag
+					0, 1, // 1 column
+					116,        // text type
+					0, 0, 0, 5, // 5 bytes
+					116, 101, 115, 116, 50, // "test2"
+				},
+				// Update message should also be dropped
+				{
+					byte(UpdateMsgType),
+					0, 0, 0, 1, // relation id
+					78,   // N flag (new tuple)
+					0, 1, // 1 column
+					116,        // text type
+					0, 0, 0, 7, // 7 bytes
+					117, 112, 100, 97, 116, 101, 100, // "updated"
+				},
+			},
+			wantActionsCount: 0, // All messages should be dropped
+			wantOrigin:       "foreign_origin",
+			wantErr:          false,
+		},
+		{
+			name:              "large transaction with foreign origin - all dropped",
+			dropForeignOrigin: true,
+			messages: [][]byte{
+				// Origin message: OriginMsgType + "replica_db\0"
+				{byte(OriginMsgType), 114, 101, 112, 108, 105, 99, 97, 95, 100, 98, 0},
+				// Relation message should be dropped
+				{
+					byte(RelationMsgType),
+					0, 0, 0, 1, // relation id
+					112, 117, 98, 108, 105, 99, 0, // "public\0"
+					116, 101, 115, 116, 95, 116, 97, 98, 108, 101, 0, // "test_table\0"
+					100, // replica identity
+					0, 1, // 1 column
+					0, // not key
+					99, 111, 108, 49, 0, // "col1\0"
+					0, 0, 0, 25, // text type
+					255, 255, 255, 255, // no modifier
+				},
+				// Insert should be dropped
+				{
+					byte(InsertMsgType),
+					0, 0, 0, 1, // relation id
+					78,   // N flag
+					0, 1, // 1 column
+					116,        // text type
+					0, 0, 0, 4, // 4 bytes
+					116, 101, 115, 116, // "test"
+				},
+				// Delete should be dropped
+				{
+					byte(DeleteMsgType),
+					0, 0, 0, 1, // relation id
+					79,   // O flag (old tuple)
+					0, 1, // 1 column
+					116,        // text type
+					0, 0, 0, 4, // 4 bytes
+					116, 101, 115, 116, // "test"
+				},
+			},
+			wantActionsCount: 0, // All data messages should be dropped
+			wantOrigin:       "replica_db",
+			wantErr:          false,
+		},
 	}
 
 	for _, tt := range tests {

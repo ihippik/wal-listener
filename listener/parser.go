@@ -61,7 +61,9 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		tx.CommitTime = &commit.Timestamp
 	case OriginMsgType:
 		origin := p.getOriginMsg()
-		p.log.Debug("origin type message was received", slog.String("origin", origin))
+		p.log.Debug("origin type message was received", 
+			slog.String("origin", origin),
+			slog.Bool("dropForeignOrigin", tx.dropForeignOrigin))
 		tx.SetOrigin(origin, tx.dropForeignOrigin)
 	case RelationMsgType:
 		if tx.ShouldDropMessage() {
