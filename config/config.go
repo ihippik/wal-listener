@@ -34,14 +34,16 @@ type Config struct {
 
 // ListenerCfg path of the listener config.
 type ListenerCfg struct {
-	SlotName          string `valid:"required"`
-	ServerPort        int
-	AckTimeout        time.Duration
-	RefreshConnection time.Duration `valid:"required"`
-	HeartbeatInterval time.Duration `valid:"required"`
-	Include           IncludeStruct
-	Exclude           ExcludeStruct
-	TopicsMap         map[string]string
+	SlotName                 string `valid:"required"`
+	ServerPort               int
+	AckTimeout               time.Duration
+	RefreshConnection        time.Duration `valid:"required"`
+	HeartbeatInterval        time.Duration `valid:"required"`
+	Include                  IncludeStruct
+	Exclude                  ExcludeStruct
+	TopicsMap                map[string]string
+	SkipTransactionBuffering bool // If true, avoids buffering each message in a transaction and instead immediately publishes them
+	DropForeignOrigin        bool // If true, drops messages from different origins
 
 	ParsedTopicsMap map[*regexp.Regexp]string `valid:"-"`
 }

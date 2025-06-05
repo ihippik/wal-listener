@@ -3,6 +3,7 @@ listener:
   slotName: myslot_1
   refreshConnection: 30s
   heartbeatInterval: 10s
+  dropForeignOrigin: false # If true, drops messages from different origins (useful for sharded databases)
   filter:
     tables:
       seasons:

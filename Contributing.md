@@ -43,3 +43,11 @@ SELECT
 ;
 
 ```
+
+#### Publishing a new docker container
+
+Run:
+
+```shell
+docker buildx build --platform linux/amd64 --push -t us-central1-docker.pkg.dev/gadget-core-production/core-production/wal-listener:sha-$(git rev-parse HEAD) .
+```

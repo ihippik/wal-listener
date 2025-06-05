@@ -7,30 +7,21 @@
 
 ![WAL-Listener](wal-listener.png)
 
-A service that helps implement the **Event-Driven architecture**.
+A service that publishes changes made to a Postgres database to a pub sub bus. Subscribes to postgres via postgres' built-in logical replication protocol, applies some filters, and then publishes to your bus of choice. 
 
-To maintain the consistency of data in the system, we will use **transactional messaging** -
-publishing events in a single transaction with a domain model change.
-
-The service allows you to subscribe to changes in the PostgreSQL database using its logical decoding capability
-and publish them to the NATS Streaming server.
-
-## Logic of work
-To receive events about data changes in our PostgreSQL DB
-  we use the standard logic decoding module (**pgoutput**) This module converts
-changes read from the WAL into a logical replication protocol.
-  And we already consume all this information on our side.
-Then we filter out only the events we need and publish them in the queue
+Key characteristics: 
+ - implements a reliable, end-to-end at-least-once publishing model, where events aren't marked as consumed until they are ack'd in the bus
+ - implemented using modern postgres go libs for maximum protocol compatability, including TOAST and other long-tail postgres feature support
 
 ### Event publishing
 
-As the message broker will be used is of your choice:
+You can use the following message brokers:
+
 - NATS JetStream [`type=nats`];
 - Apache Kafka [`type=kafka`];
 - RabbitMQ [`type=rabbitmq`].
 - Google Pub/Sub [`type=google_pubsub`].
 
-Service publishes the following structure.
 The name of the topic for subscription to receive messages is formed from the prefix of the topic,
 the name of the database and the name of the table `prefix + schema_table`.
 
@@ -63,8 +54,8 @@ This filter means that we only process events occurring with the `users` table,
 and in particular `insert` and `update` data.
 
 ### Topic mapping
-By default, output NATS topic name consist of prefix, DB schema, and DB table name,
-but if you want to send all update in one topic you should be configured the topic map:
+
+By default, output topics name consist of prefix, DB schema, and DB table name, but if you want to send all update in one topic you should be configured the topic map:
 ```yaml
 topicsMap:
   main_users: "notifier"
@@ -81,6 +72,7 @@ tags:
 ```
 
 ## DB setting
+
 You must make the following settings in the db configuration (postgresql.conf)
 * wal_level >= “logical”
 * max_replication_slots >= 1
@@ -97,7 +89,8 @@ Notes:
 1. To receive `DataOld` field you need to change REPLICA IDENTITY to FULL as described here:
    [#SQL-ALTERTABLE-REPLICA-IDENTITY](https://www.postgresql.org/docs/current/sql-altertable.html#SQL-ALTERTABLE-REPLICA-IDENTITY)
 
-## Service configuration
+## Example configuration
+
 ```yaml
 listener:
   slotName: myslot_1
@@ -110,6 +103,8 @@ listener:
         - update
   topicsMap:
     schema_table_name: "notifier"
+  skipTransactionBuffering: false
+  dropForeignOrigin: false
 logger:
   level: info
   fmt: json
@@ -130,16 +125,65 @@ monitoring:
   promAddr: ":2112"
 ```
 
+### Configuration settings
+
+
+
+#### `listener.skipTransactionBuffering`
+
+By default, `wal-listener` reads messages from Postgres until a full transaction has been seen, and then emits it to the bus. This ensures the bus doesn't see any partial transactions, as well as compatability with the newer postgres logical replication protocols that stream transactions in chunks.
+
+However, it means that `wal-listener` needs enough memory to buffer your database's biggest transactions to successfully publish. For databases with large transactions this can be untenable. To publish messages as soon as they are seen in the replication stream, which doesn't require all this memory, you can set `listener.skipTransactionBuffering: true`
+
+```yaml
+listener:
+  skipTransactionBuffering: true
+```
+
+#### `listener.dropForeignOrigin`
+
+By default, `wal-listener` will publish all messages that pass your filters from Postgres, including those that the database received from subscriptions to further upstream databases. 
+
+If you'd like to ignore messages that originate on these upstream databases, set `listener.dropForeignOrigin: true`.
+
+Here's what that might look like:
+
+```
+                                                 
+                  logical                        
+                  replication                    
+ ┌──────────────┐           ┌──────────────┐     
+ │  Database A  │ ────────► │  Database B  │     
+ └──────────────┘           └──────────────┘     
+                                                 
+                                   │ logical     
+                                   │ replication 
+                                   ▼             
+                          ┌──────────────────┐   
+                          │   wal-listener   │   
+                          └──────────────────┘   
+                                                 
+```
+
+In this example, by default, `wal-listener` will publish all transactions that happen on `Database B`, which will __include__ all those that originated on `Database A` and were replicated over to `Database B`. `listener.dropForeignOrigin` will configure `wal-listener` to only publish transactions which originate on `Database B`, and ignore those that originate on `Database A`.
+
+#### `listener.topicsMap`
+
+TODO
+
 ## Monitoring
 
 ### Sentry
+
 If you specify an DSN-string for the [Sentry](https://sentry.io/) project, the next level errors will be posted there via a hook:
 * Panic
 * Fatal
 * Error
 
 ### Prometheus
+
 You can take metrics by specifying an endpoint for Prometheus in the configuration.
+
 #### Available metrics
 
 | name                        | description                          | fields             |
@@ -148,8 +192,8 @@ You can take metrics by specifying an endpoint for Prometheus in the configurati
 | filter_skipped_events_total | the total number of skipped events   | `table`            |
 
 ### Kubernetes
-Application initializes a web server (*if a port is specified in the configuration*) with two endpoints
-for readiness `/ready`  and liveness `/healthz` probes.
+
+The `wal-listener` runs a web server (*if a port is specified in the configuration*) with two endpoints for readiness `/ready`  and liveness `/healthz` probes.
 
 ## Docker
 
@@ -164,22 +208,7 @@ COPY /config.yml .
 
 Сontainer preparation is carried out with the help of a multi-stage build, which creates after itself auxiliary images of a large size.
 Please don't forget to delete them:
+
 ```shell
 docker image prune --filter label=stage=builder
-```
-
-#### Docker Hub
-https://hub.docker.com/r/ihippik/wal-listener
-
-#### Example
-```shell
-docker run -v $(pwd)/config.yml:/app/config.yml ihippik/wal-listener:tag
-```
-
-#### Publishing a new docker container
-
-Run:
-
-```shell
-docker buildx build --platform linux/amd64 --push -t us-central1-docker.pkg.dev/gadget-core-production/core-production/wal-listener:sha-$(git rev-parse HEAD) .
 ```
