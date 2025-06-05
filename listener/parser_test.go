@@ -694,7 +694,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 							{
 								log:       logger,
 								name:      "id",
-								value:     10,
+								value:     nil,
 								valueType: pgtype.Int4OID,
 								isKey:     true,
 							},

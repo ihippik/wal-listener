@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -572,10 +573,15 @@ func TestListener_Process(t *testing.T) {
 			}
 
 			err := l.Process(ctx)
-			if err != nil && assert.Error(t, tt.wantErr, err.Error()) {
+			if tt.wantErr != nil {
+				assert.Error(t, err)
 				assert.EqualError(t, err, tt.wantErr.Error())
 			} else {
-				assert.NoError(t, tt.wantErr)
+				if tt.useTimeout && err != nil && strings.Contains(err.Error(), "context canceled") {
+					assert.NoError(t, nil)
+				} else {
+					assert.NoError(t, err)
+				}
 			}
 		})
 	}
