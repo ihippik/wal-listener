@@ -434,7 +434,7 @@ func TestListener_Process(t *testing.T) {
 				repo.On("CreatePublication", "wal-listener").Return(nil).Once()
 				lsn := "100/200"
 				repo.On("GetSlotLSN", "slot1").Return(&lsn, nil).Once()
-				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "origin 'any'", "publication_names 'wal-listener'"}).Return(nil).Once()
+				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "publication_names 'wal-listener'"}).Return(nil).Once()
 				repl.On("IsAlive").Return(true).Maybe()
 				repo.On("IsAlive").Return(true).Maybe()
 				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), nil).Maybe()
@@ -466,7 +466,7 @@ func TestListener_Process(t *testing.T) {
 				repo.On("CreatePublication", "wal-listener").Return(errors.New("some err")).Once()
 				lsn := "100/200"
 				repo.On("GetSlotLSN", "slot1").Return(&lsn, nil).Once()
-				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "origin 'any'", "publication_names 'wal-listener'"}).Return(nil).Once()
+				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "publication_names 'wal-listener'"}).Return(nil).Once()
 				repl.On("IsAlive").Return(true).Maybe()
 				repo.On("IsAlive").Return(true).Maybe()
 				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), context.Canceled).Maybe()
@@ -523,7 +523,7 @@ func TestListener_Process(t *testing.T) {
 				lsn := ""
 				repo.On("GetSlotLSN", "slot1").Return(&lsn, pgx.ErrNoRows).Once()
 				repl.On("CreateReplicationSlotEx", "slot1", "pgoutput").Return(nil)
-				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "origin 'any'", "publication_names 'wal-listener'"}).Return(nil).Once()
+				repl.On("StartReplication", "slot1", pglogrepl.LSN(1099511628288), []string{"proto_version '1'", "publication_names 'wal-listener'"}).Return(nil).Once()
 				repl.On("IsAlive").Return(true).Maybe()
 				repo.On("IsAlive").Return(true).Maybe()
 				repl.On("WaitForReplicationMessage", mock.Anything).Return((*pgproto3.CopyData)(nil), context.Canceled).Maybe()

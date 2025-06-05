@@ -196,11 +196,7 @@ func (l *Listener) Process(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
-	logger.Info("service was started", 
-		slog.String("version", "v0.2.0"),
-		slog.Bool("dropForeignOrigin", l.cfg.Listener.DropForeignOrigin),
-		slog.Bool("skipTransactionBuffering", l.cfg.Listener.SkipTransactionBuffering),
-		slog.String("slotName", l.cfg.Listener.SlotName))
+	logger.Info("service was started", slog.String("version", "v0.2.0"))
 
 	if err := l.repository.CreatePublication(ctx, publicationName); err != nil {
 		logger.Warn("publication creation was skipped", "err", err)
@@ -304,7 +300,6 @@ func (l *Listener) slotIsExists(ctx context.Context) (bool, error) {
 
 const (
 	protoVersion    = "proto_version '1'" // todo: 2 not supported in pg 13
-	originAny       = "origin 'any'"      // Enable origin messages in logical replication
 	publicationName = "wal-listener"
 )
 
@@ -323,7 +318,6 @@ func (l *Listener) Stream(ctx context.Context) error {
 		l.cfg.Listener.SlotName,
 		currentLSN,
 		protoVersion,
-		originAny,
 		publicationNames(publicationName),
 		//"messages 'true'", todo: only in pg 15
 		//"streaming 'true'",
