@@ -61,9 +61,10 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		tx.CommitTime = &commit.Timestamp
 	case OriginMsgType:
 		origin := p.getOriginMsg()
-		p.log.Debug("origin type message was received", 
+		p.log.Info("ORIGIN MESSAGE RECEIVED", 
 			slog.String("origin", origin),
-			slog.Bool("dropForeignOrigin", tx.dropForeignOrigin))
+			slog.Bool("dropForeignOrigin", tx.dropForeignOrigin),
+			slog.String("debug", "This should appear if PostgreSQL sends origin info"))
 		tx.SetOrigin(origin, tx.dropForeignOrigin)
 	case RelationMsgType:
 		if tx.ShouldDropMessage() {
@@ -105,8 +106,12 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		}
 		p.log.Debug("type message was received")
 	case InsertMsgType:
+		p.log.Info("INSERT MESSAGE PROCESSING", 
+			slog.String("current_origin", tx.origin),
+			slog.Bool("dropForeignOrigin", tx.dropForeignOrigin),
+			slog.Bool("should_drop", tx.ShouldDropMessage()))
 		if tx.ShouldDropMessage() {
-			p.log.Debug("dropping insert message due to foreign origin", slog.String("origin", tx.origin))
+			p.log.Info("DROPPING INSERT MESSAGE due to foreign origin", slog.String("origin", tx.origin))
 			return nil
 		}
 		insert := p.getInsertMsg()
