@@ -304,6 +304,7 @@ func (l *Listener) slotIsExists(ctx context.Context) (bool, error) {
 
 const (
 	protoVersion    = "proto_version '1'" // todo: 2 not supported in pg 13
+	originAny       = "origin 'any'"      // Enable origin messages in logical replication
 	publicationName = "wal-listener"
 )
 
@@ -322,6 +323,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 		l.cfg.Listener.SlotName,
 		currentLSN,
 		protoVersion,
+		originAny,
 		publicationNames(publicationName),
 		//"messages 'true'", todo: only in pg 15
 		//"streaming 'true'",

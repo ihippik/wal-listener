@@ -79,12 +79,13 @@ func TestOriginFilteringRealIntegration(t *testing.T) {
 	if strings.Contains(logs, "dropping message due to foreign origin") {
 		t.Log("✅ Origin filtering is working - found drop messages in logs")
 	} else {
-		t.Log("❌ BUG REPRODUCED: No 'dropping message due to foreign origin' messages found in logs")
-		t.Log("This confirms the production issue - origin filtering is not working as expected")
+		assert.Fail(t, "BUG REPRODUCED: No 'dropping message due to foreign origin' messages found in logs", 
+			"This confirms the production issue - origin filtering is not working as expected")
 	}
 	
 	if replicatedMessageCount > 0 {
-		t.Log("❌ BUG CONFIRMED: Replicated messages are being published despite dropForeignOrigin: true")
+		assert.Fail(t, "BUG CONFIRMED: Replicated messages are being published despite dropForeignOrigin: true",
+			"Expected 0 replicated messages but got %d", replicatedMessageCount)
 	}
 }
 
