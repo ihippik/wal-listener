@@ -130,9 +130,10 @@ func setupLogicalReplication(primaryDB, replicaDB *sql.DB) error {
 func startWalListener() *exec.Cmd {
 	cmd := exec.Command("docker", "compose", "-f", "docker/docker-compose-integration.yml", "logs", "-f", "wal_listener")
 	
-	go func() {
-		cmd.Run()
-	}()
+	err := cmd.Start()
+	if err != nil {
+		log.Printf("Failed to start wal listener logs: %v", err)
+	}
 	
 	return cmd
 }
