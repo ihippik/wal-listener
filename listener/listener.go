@@ -196,7 +196,11 @@ func (l *Listener) Process(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
 
-	logger.Info("service was started", slog.String("version", "v0.2.0"))
+	logger.Info("service was started", 
+		slog.String("version", "v0.2.0"),
+		slog.Bool("dropForeignOrigin", l.cfg.Listener.DropForeignOrigin),
+		slog.Bool("skipTransactionBuffering", l.cfg.Listener.SkipTransactionBuffering),
+		slog.String("slotName", l.cfg.Listener.SlotName))
 
 	if err := l.repository.CreatePublication(ctx, publicationName); err != nil {
 		logger.Warn("publication creation was skipped", "err", err)
