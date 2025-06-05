@@ -62,7 +62,7 @@ func TestOriginFilteringRealIntegration(t *testing.T) {
 	_, err = replicaDB.Exec("INSERT INTO test_table (name, source) VALUES ($1, $2)", "replicated_data", "replica")
 	require.NoError(t, err)
 
-	time.Sleep(10 * time.Second)
+	time.Sleep(15 * time.Second)
 
 
 	logs, err := getWalListenerLogs()
@@ -123,6 +123,8 @@ func setupLogicalReplication(primaryDB, replicaDB *sql.DB) error {
 	if err != nil && !strings.Contains(err.Error(), "already exists") {
 		return fmt.Errorf("failed to create subscription: %v", err)
 	}
+	
+	time.Sleep(5 * time.Second)
 	
 	log.Println("Logical replication subscription created")
 	return nil
