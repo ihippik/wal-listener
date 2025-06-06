@@ -681,11 +681,13 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
-				monitor:    metrics,
-				log:        logger,
-				LSN:        4,
-				BeginTime:  &postgresEpoch,
-				CommitTime: &postgresEpoch,
+				monitor:            metrics,
+				log:                logger,
+				LSN:                4,
+				BeginTime:          &postgresEpoch,
+				CommitTime:         &postgresEpoch,
+				actionCount:        1,
+				maxTransactionSize: 0,
 				RelationStore: map[int32]RelationData{
 					2: {
 						Schema: "public",
@@ -774,11 +776,13 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
-				monitor:    metrics,
-				log:        logger,
-				LSN:        4,
-				BeginTime:  &postgresEpoch,
-				CommitTime: &postgresEpoch,
+				monitor:            metrics,
+				log:                logger,
+				LSN:                4,
+				BeginTime:          &postgresEpoch,
+				CommitTime:         &postgresEpoch,
+				actionCount:        1,
+				maxTransactionSize: 0,
 				RelationStore: map[int32]RelationData{
 					5: {
 						Schema: "public",
@@ -865,11 +869,13 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
-				monitor:    metrics,
-				log:        logger,
-				LSN:        4,
-				BeginTime:  &postgresEpoch,
-				CommitTime: &postgresEpoch,
+				monitor:            metrics,
+				log:                logger,
+				LSN:                4,
+				BeginTime:          &postgresEpoch,
+				CommitTime:         &postgresEpoch,
+				actionCount:        1,
+				maxTransactionSize: 0,
 				RelationStore: map[int32]RelationData{
 					5: {
 						Schema: "public",
