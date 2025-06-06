@@ -59,6 +59,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		}
 
 		tx.CommitTime = &commit.Timestamp
+		tx.LogDroppedActions()
 	case OriginMsgType:
 		origin := p.getOriginMsg()
 		p.log.Debug("origin type message was received", slog.String("origin", origin))
@@ -114,6 +115,10 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 			slog.Any("relation_id", insert.RelationID),
 		)
 
+		if tx.ShouldDropAction() {
+			return nil
+		}
+
 		action, err := tx.CreateActionData(
 			insert.RelationID,
 			nil,
@@ -125,6 +130,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		}
 
 		tx.Actions = append(tx.Actions, action)
+		tx.emittedActionCount++
 	case UpdateMsgType:
 		if tx.ShouldDropMessage() {
 			p.log.Debug("dropping update message due to foreign origin", slog.String("origin", tx.origin))
@@ -133,6 +139,10 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		upd := p.getUpdateMsg()
 
 		p.log.Debug("update type message was received", slog.Any("relation_id", upd.RelationID))
+
+		if tx.ShouldDropAction() {
+			return nil
+		}
 
 		action, err := tx.CreateActionData(
 			upd.RelationID,
@@ -145,6 +155,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		}
 
 		tx.Actions = append(tx.Actions, action)
+		tx.emittedActionCount++
 	case DeleteMsgType:
 		if tx.ShouldDropMessage() {
 			p.log.Debug("dropping delete message due to foreign origin", slog.String("origin", tx.origin))
@@ -157,6 +168,10 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 			slog.Any("relation_id", del.RelationID),
 		)
 
+		if tx.ShouldDropAction() {
+			return nil
+		}
+
 		action, err := tx.CreateActionData(
 			del.RelationID,
 			del.OldRow,
@@ -168,6 +183,7 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		}
 
 		tx.Actions = append(tx.Actions, action)
+		tx.emittedActionCount++
 	case TruncateMsgType:
 		if tx.ShouldDropMessage() {
 			p.log.Debug("dropping truncate message due to foreign origin", slog.String("origin", tx.origin))
@@ -177,12 +193,17 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		p.log.Debug("truncate type message was received")
 
 		for _, msg := range truncateMessages {
+			if tx.ShouldDropAction() {
+				continue
+			}
+
 			action, err := tx.CreateActionData(msg.RelationID, nil, nil, ActionKindTruncate)
 			if err != nil {
 				return fmt.Errorf("truncate action data: %w", err)
 			}
 
 			tx.Actions = append(tx.Actions, action)
+			tx.emittedActionCount++
 		}
 	default:
 		return fmt.Errorf("%w : %s", errUnknownMessageType, []byte{p.msgType})

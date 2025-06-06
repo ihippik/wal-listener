@@ -535,7 +535,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				tx: NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{
 					"environment": "test",
 					"service":     "wal-listener",
-				}, false),
+				}, false, 0),
 			},
 			want: &WalTransaction{
 				pool:          nil,
@@ -681,11 +681,13 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
-				monitor:    metrics,
-				log:        logger,
-				LSN:        4,
-				BeginTime:  &postgresEpoch,
-				CommitTime: &postgresEpoch,
+				monitor:            metrics,
+				log:                logger,
+				LSN:                4,
+				BeginTime:          &postgresEpoch,
+				CommitTime:         &postgresEpoch,
+				emittedActionCount: 1,
+				maxTransactionSize: 0,
 				RelationStore: map[int32]RelationData{
 					2: {
 						Schema: "public",
@@ -774,11 +776,13 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
-				monitor:    metrics,
-				log:        logger,
-				LSN:        4,
-				BeginTime:  &postgresEpoch,
-				CommitTime: &postgresEpoch,
+				monitor:            metrics,
+				log:                logger,
+				LSN:                4,
+				BeginTime:          &postgresEpoch,
+				CommitTime:         &postgresEpoch,
+				emittedActionCount: 1,
+				maxTransactionSize: 0,
 				RelationStore: map[int32]RelationData{
 					5: {
 						Schema: "public",
@@ -865,11 +869,13 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				},
 			},
 			want: &WalTransaction{
-				monitor:    metrics,
-				log:        logger,
-				LSN:        4,
-				BeginTime:  &postgresEpoch,
-				CommitTime: &postgresEpoch,
+				monitor:            metrics,
+				log:                logger,
+				LSN:                4,
+				BeginTime:          &postgresEpoch,
+				CommitTime:         &postgresEpoch,
+				emittedActionCount: 1,
+				maxTransactionSize: 0,
 				RelationStore: map[int32]RelationData{
 					5: {
 						Schema: "public",
@@ -1059,7 +1065,7 @@ func TestBinaryParser_ParseWalMessage_DropForeignOrigin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tx := NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{}, tt.dropForeignOrigin)
+			tx := NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{}, tt.dropForeignOrigin, 0)
 			// Add a dummy relation to prevent relation not found errors
 			tx.RelationStore[1] = RelationData{
 				Schema: "public",

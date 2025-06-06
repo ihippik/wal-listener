@@ -31,6 +31,7 @@ func TestConfig_Validate(t *testing.T) {
 					AckTimeout:        10,
 					RefreshConnection: 10,
 					HeartbeatInterval: 10,
+					MaxTransactionSize: 1000,
 				},
 				Database: &DatabaseCfg{
 					Host:     "host",
