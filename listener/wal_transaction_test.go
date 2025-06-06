@@ -137,9 +137,11 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			w := WalTransaction{
-				log:           logger,
-				LSN:           tt.fields.LSN,
-				BeginTime:     tt.fields.BeginTime,
+				log:                logger,
+				LSN:                tt.fields.LSN,
+				BeginTime:          tt.fields.BeginTime,
+				actionCount:        0,
+				maxTransactionSize: 0,
 				CommitTime:    tt.fields.CommitTime,
 				RelationStore: tt.fields.RelationStore,
 				Actions:       tt.fields.Actions,
