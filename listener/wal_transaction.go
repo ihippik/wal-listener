@@ -203,8 +203,6 @@ func (w *WalTransaction) Clear() {
 // ClearActions clears only the actions but preserves transaction state like origin
 func (w *WalTransaction) ClearActions() {
 	w.Actions = nil
-	w.emittedActionCount = 0
-	w.droppedActionCount = 0
 }
 
 // CreateActionData create action  from WAL message data.

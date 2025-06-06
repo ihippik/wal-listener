@@ -692,17 +692,48 @@ func TestWalTransaction_ClearResetsActionCount(t *testing.T) {
 	assert.Equal(t, ([]ActionData)(nil), tx.Actions)
 }
 
-func TestWalTransaction_ClearActionsResetsActionCount(t *testing.T) {
+func TestWalTransaction_MaxTransactionSize(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	metrics := new(monitorMock)
 
-	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, false, 10)
-	tx.emittedActionCount = 5
-	tx.droppedActionCount = 3
-	tx.Actions = []ActionData{{Schema: "test", Table: "table", Kind: ActionKindInsert}}
+	tx := NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{}, false, 2)
 
+	// Add first action - should be accepted
+	action1 := ActionData{Schema: "public", Table: "users", Kind: ActionKindInsert}
+	tx.Actions = append(tx.Actions, action1)
+	tx.emittedActionCount++
+
+	// Add second action - should be accepted
+	action2 := ActionData{Schema: "public", Table: "users", Kind: ActionKindInsert}
+	tx.Actions = append(tx.Actions, action2)
+	tx.emittedActionCount++
+
+	// third action should now be dropped
+	assert.Equal(t, tx.ShouldDropAction(), true)
+}
+
+func TestWalTransaction_MaxTransactionSizeInSkipBufferingMode(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	metrics := new(monitorMock)
+
+	tx := NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{}, false, 2)
+
+	// Add first action - should be accepted
+	action1 := ActionData{Schema: "public", Table: "users", Kind: ActionKindInsert}
+	tx.Actions = append(tx.Actions, action1)
+	tx.emittedActionCount++
+
+	// simulate skipTransactionBuffering mode by clearing actions
 	tx.ClearActions()
 
-	assert.Equal(t, 0, tx.emittedActionCount)
-	assert.Equal(t, 0, tx.droppedActionCount)
-	assert.Equal(t, ([]ActionData)(nil), tx.Actions)
+	// Add second action - should be accepted
+	action2 := ActionData{Schema: "public", Table: "users", Kind: ActionKindInsert}
+	tx.Actions = append(tx.Actions, action2)
+	tx.emittedActionCount++
+
+	// simulate skipTransactionBuffering mode by clearing actions
+	tx.ClearActions()
+
+	// third action should now be dropped
+	assert.Equal(t, tx.ShouldDropAction(), true)
 }
