@@ -428,6 +428,14 @@ func TestListener_Process(t *testing.T) {
 					},
 					TopicsMap: nil,
 				},
+				Database: &config.DatabaseCfg{
+					Host: "localhost",
+					Port: 5432,
+					Name: "testdb",
+				},
+				Publisher: &config.PublisherCfg{
+					Type: config.PublisherTypeStdout,
+				},
 			},
 			setup: func(repo *repositoryMock, repl *replicatorMock) {
 				repl.On("IdentifySystem").Return(pglogrepl.IdentifySystemResult{}, nil)
@@ -459,6 +467,14 @@ func TestListener_Process(t *testing.T) {
 						Tables: nil,
 					},
 					TopicsMap: nil,
+				},
+				Database: &config.DatabaseCfg{
+					Host: "localhost",
+					Port: 5432,
+					Name: "testdb",
+				},
+				Publisher: &config.PublisherCfg{
+					Type: config.PublisherTypeStdout,
 				},
 			},
 			setup: func(repo *repositoryMock, repl *replicatorMock) {
@@ -492,6 +508,14 @@ func TestListener_Process(t *testing.T) {
 					},
 					TopicsMap: nil,
 				},
+				Database: &config.DatabaseCfg{
+					Host: "localhost",
+					Port: 5432,
+					Name: "testdb",
+				},
+				Publisher: &config.PublisherCfg{
+					Type: config.PublisherTypeStdout,
+				},
 			},
 			setup: func(repo *repositoryMock, repl *replicatorMock) {
 				repl.On("IdentifySystem").Return(pglogrepl.IdentifySystemResult{}, nil)
@@ -515,6 +539,14 @@ func TestListener_Process(t *testing.T) {
 						Tables: nil,
 					},
 					TopicsMap: nil,
+				},
+				Database: &config.DatabaseCfg{
+					Host: "localhost",
+					Port: 5432,
+					Name: "testdb",
+				},
+				Publisher: &config.PublisherCfg{
+					Type: config.PublisherTypeStdout,
 				},
 			},
 			setup: func(repo *repositoryMock, repl *replicatorMock) {
@@ -546,7 +578,7 @@ func TestListener_Process(t *testing.T) {
 			pub := new(publisherMock)
 			parser := new(parserMock)
 			monitor := new(monitorMock)
-			
+
 			defer repo.AssertExpectations(t)
 			defer repl.AssertExpectations(t)
 

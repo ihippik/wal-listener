@@ -74,7 +74,7 @@ tags:
 ## DB setting
 
 You must make the following settings in the db configuration (postgresql.conf)
-* wal_level >= “logical”
+* wal_level >= "logical"
 * max_replication_slots >= 1
 
 The publication & slot created automatically when the service starts (for all tables and all actions).
@@ -168,6 +168,19 @@ Here's what the setup might look like:
 ```
 
 In this example, by default, `wal-listener` will publish all transactions that happen on `Database B`, which will __include__ all those that originated on `Database A` and were replicated over to `Database B`. `listener.dropForeignOrigin` will configure `wal-listener` to only publish transactions which originate on `Database B`, and ignore those that originate on `Database A`.
+
+#### `listener.maxTransactionSize`
+
+By default, `wal-listener` will process all actions in a transaction. However, for very large transactions, you may want to limit the number of actions processed to avoid memory issues or overwhelming downstream systems.
+
+If you set `listener.maxTransactionSize` to a positive integer, `wal-listener` will only process that many actions from each transaction. Any remaining actions will be dropped, and a log message will be emitted indicating how many actions were dropped.
+
+```yaml
+listener:
+  maxTransactionSize: 1000  # Only process up to 1000 actions per transaction
+```
+
+__Note__: `listener.maxTransactionSize` does not cause an increase in memory usage, regardless of the `listener.skipTransactionBuffering` option. If you need to run memory constrained, you can use any combination of these options.
 
 #### `listener.topicsMap`
 
