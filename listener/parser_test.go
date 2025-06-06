@@ -686,7 +686,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				LSN:                4,
 				BeginTime:          &postgresEpoch,
 				CommitTime:         &postgresEpoch,
-				actionCount:        1,
+				emittedActionCount: 1,
 				maxTransactionSize: 0,
 				RelationStore: map[int32]RelationData{
 					2: {
@@ -781,7 +781,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				LSN:                4,
 				BeginTime:          &postgresEpoch,
 				CommitTime:         &postgresEpoch,
-				actionCount:        1,
+				emittedActionCount: 1,
 				maxTransactionSize: 0,
 				RelationStore: map[int32]RelationData{
 					5: {
@@ -874,7 +874,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				LSN:                4,
 				BeginTime:          &postgresEpoch,
 				CommitTime:         &postgresEpoch,
-				actionCount:        1,
+				emittedActionCount: 1,
 				maxTransactionSize: 0,
 				RelationStore: map[int32]RelationData{
 					5: {

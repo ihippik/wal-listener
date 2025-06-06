@@ -50,8 +50,13 @@ type WalTransaction struct {
 	origin            string
 	dropForeignOrigin bool
 
-	actionCount        int
+	// Transaction size tracking
+	// If non-zero, stop emitting actions after this many have been emitted.
 	maxTransactionSize int
+	// Count of actions emitted so far.
+	emittedActionCount int
+	// Count of actions dropped so far.
+	droppedActionCount int
 }
 
 // NewWalTransaction create and initialize new WAL transaction.
@@ -191,13 +196,15 @@ func (w *WalTransaction) Clear() {
 	w.BeginTime = nil
 	w.Actions = nil
 	w.origin = ""
-	w.actionCount = 0
+	w.emittedActionCount = 0
+	w.droppedActionCount = 0
 }
 
 // ClearActions clears only the actions but preserves transaction state like origin
 func (w *WalTransaction) ClearActions() {
 	w.Actions = nil
-	w.actionCount = 0
+	w.emittedActionCount = 0
+	w.droppedActionCount = 0
 }
 
 // CreateActionData create action  from WAL message data.
@@ -260,6 +267,23 @@ func (w *WalTransaction) CreateActionData(
 	a.NewColumns = newColumns
 
 	return a, nil
+}
+
+func (w *WalTransaction) ShouldDropAction() bool {
+	if w.maxTransactionSize > 0 && w.emittedActionCount >= w.maxTransactionSize {
+		w.droppedActionCount++
+		return true
+	}
+	return false
+}
+
+func (w *WalTransaction) LogDroppedActions() {
+	if w.droppedActionCount > 0 {
+		w.log.Info("transaction size limit reached, dropped actions",
+			slog.Int("limit", w.maxTransactionSize),
+			slog.Int("total_actions", w.emittedActionCount+w.droppedActionCount),
+			slog.Int("dropped_count", w.droppedActionCount))
+	}
 }
 
 // CreateEventsWithFilter filter WAL message by table,
