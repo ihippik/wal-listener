@@ -340,7 +340,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 		}
 	}()
 
-	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude, l.cfg.Tags, l.cfg.Listener.DropForeignOrigin)
+	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude, l.cfg.Tags, l.cfg.Listener.DropForeignOrigin, l.cfg.Listener.MaxTransactionSize)
 
 	group, ctx := errgroup.WithContext(ctx)
 	messageChan := make(chan *pgproto3.CopyData, 20_000)

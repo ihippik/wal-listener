@@ -49,22 +49,26 @@ type WalTransaction struct {
 	// Origin tracking
 	origin            string
 	dropForeignOrigin bool
+
+	actionCount        int
+	maxTransactionSize int
 }
 
 // NewWalTransaction create and initialize new WAL transaction.
-func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor, includeTableMap map[string][]string, excludes config.ExcludeStruct, tags map[string]string, dropForeignOrigin bool) *WalTransaction {
+func NewWalTransaction(log *slog.Logger, pool *sync.Pool, monitor transactionMonitor, includeTableMap map[string][]string, excludes config.ExcludeStruct, tags map[string]string, dropForeignOrigin bool, maxTransactionSize int) *WalTransaction {
 	const aproxData = 300
 
 	return &WalTransaction{
-		pool:              pool,
-		log:               log,
-		monitor:           monitor,
-		RelationStore:     make(map[int32]RelationData),
-		Actions:           make([]ActionData, 0, aproxData),
-		includeTableMap:   includeTableMap,
-		excludes:          excludes,
-		tags:              tags,
-		dropForeignOrigin: dropForeignOrigin,
+		pool:               pool,
+		log:                log,
+		monitor:            monitor,
+		RelationStore:      make(map[int32]RelationData),
+		Actions:            make([]ActionData, 0, aproxData),
+		includeTableMap:    includeTableMap,
+		excludes:           excludes,
+		tags:               tags,
+		dropForeignOrigin:  dropForeignOrigin,
+		maxTransactionSize: maxTransactionSize,
 	}
 }
 
@@ -186,12 +190,14 @@ func (w *WalTransaction) Clear() {
 	w.CommitTime = nil
 	w.BeginTime = nil
 	w.Actions = nil
-	w.origin = "" // Reset origin on transaction clear
+	w.origin = ""
+	w.actionCount = 0
 }
 
 // ClearActions clears only the actions but preserves transaction state like origin
 func (w *WalTransaction) ClearActions() {
 	w.Actions = nil
+	w.actionCount = 0
 }
 
 // CreateActionData create action  from WAL message data.

@@ -124,7 +124,15 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 			return fmt.Errorf("create action data: %w", err)
 		}
 
+		if tx.maxTransactionSize > 0 && tx.actionCount >= tx.maxTransactionSize {
+			p.log.Info("transaction size limit reached, dropping remaining actions",
+				slog.Int("limit", tx.maxTransactionSize),
+				slog.Int("current_count", tx.actionCount))
+			return nil
+		}
+
 		tx.Actions = append(tx.Actions, action)
+		tx.actionCount++
 	case UpdateMsgType:
 		if tx.ShouldDropMessage() {
 			p.log.Debug("dropping update message due to foreign origin", slog.String("origin", tx.origin))
@@ -144,7 +152,15 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 			return fmt.Errorf("create action data: %w", err)
 		}
 
+		if tx.maxTransactionSize > 0 && tx.actionCount >= tx.maxTransactionSize {
+			p.log.Info("transaction size limit reached, dropping remaining actions",
+				slog.Int("limit", tx.maxTransactionSize),
+				slog.Int("current_count", tx.actionCount))
+			return nil
+		}
+
 		tx.Actions = append(tx.Actions, action)
+		tx.actionCount++
 	case DeleteMsgType:
 		if tx.ShouldDropMessage() {
 			p.log.Debug("dropping delete message due to foreign origin", slog.String("origin", tx.origin))
@@ -167,7 +183,15 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 			return fmt.Errorf("create action data: %w", err)
 		}
 
+		if tx.maxTransactionSize > 0 && tx.actionCount >= tx.maxTransactionSize {
+			p.log.Info("transaction size limit reached, dropping remaining actions",
+				slog.Int("limit", tx.maxTransactionSize),
+				slog.Int("current_count", tx.actionCount))
+			return nil
+		}
+
 		tx.Actions = append(tx.Actions, action)
+		tx.actionCount++
 	case TruncateMsgType:
 		if tx.ShouldDropMessage() {
 			p.log.Debug("dropping truncate message due to foreign origin", slog.String("origin", tx.origin))
@@ -182,7 +206,15 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 				return fmt.Errorf("truncate action data: %w", err)
 			}
 
+			if tx.maxTransactionSize > 0 && tx.actionCount >= tx.maxTransactionSize {
+				p.log.Info("transaction size limit reached, dropping remaining actions",
+					slog.Int("limit", tx.maxTransactionSize),
+					slog.Int("current_count", tx.actionCount))
+				return nil
+			}
+
 			tx.Actions = append(tx.Actions, action)
+			tx.actionCount++
 		}
 	default:
 		return fmt.Errorf("%w : %s", errUnknownMessageType, []byte{p.msgType})

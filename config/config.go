@@ -44,6 +44,7 @@ type ListenerCfg struct {
 	TopicsMap                map[string]string
 	SkipTransactionBuffering bool // If true, avoids buffering each message in a transaction and instead immediately publishes them
 	DropForeignOrigin        bool // If true, drops messages from different origins
+	MaxTransactionSize       int  // If > 0, drops remaining actions in a transaction after this many actions
 
 	ParsedTopicsMap map[*regexp.Regexp]string `valid:"-"`
 }

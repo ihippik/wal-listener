@@ -465,7 +465,7 @@ func TestWalTransaction_OriginTracking(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, tt.dropForeignOrigin)
+			tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, tt.dropForeignOrigin, 0)
 
 			if tt.origin != "" {
 				tx.SetOrigin(tt.origin, tt.dropForeignOrigin)
@@ -486,7 +486,7 @@ func TestWalTransaction_Clear(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	now := time.Now()
 
-	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, true)
+	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, true, 0)
 
 	// Set up transaction state
 	tx.LSN = 123
@@ -519,7 +519,7 @@ func TestWalTransaction_ClearActions(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	now := time.Now()
 
-	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, true)
+	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, true, 0)
 
 	// Set up transaction state
 	tx.LSN = 123
@@ -595,7 +595,7 @@ func TestWalTransaction_SetOrigin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, tt.dropForeignOrigin)
+			tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, tt.dropForeignOrigin, 0)
 
 			// Set initial origin if provided
 			if tt.initialOrigin != "" {
@@ -614,4 +614,89 @@ func TestWalTransaction_SetOrigin(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestWalTransaction_TransactionSizeLimit(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	tests := []struct {
+		name             string
+		maxSize          int
+		actionCount      int
+		wantActionCount  int
+		wantShouldLimit  bool
+	}{
+		{
+			name:             "no limit set",
+			maxSize:          0,
+			actionCount:      100,
+			wantActionCount:  100,
+			wantShouldLimit:  false,
+		},
+		{
+			name:             "under limit",
+			maxSize:          10,
+			actionCount:      5,
+			wantActionCount:  5,
+			wantShouldLimit:  false,
+		},
+		{
+			name:             "at limit",
+			maxSize:          10,
+			actionCount:      10,
+			wantActionCount:  10,
+			wantShouldLimit:  true,
+		},
+		{
+			name:             "over limit",
+			maxSize:          10,
+			actionCount:      15,
+			wantActionCount:  10,
+			wantShouldLimit:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, false, tt.maxSize)
+
+			for i := 0; i < tt.actionCount; i++ {
+				if tt.maxSize > 0 && tx.actionCount >= tt.maxSize {
+					break
+				}
+				tx.actionCount++
+			}
+
+			assert.Equal(t, tt.wantActionCount, tx.actionCount)
+
+			shouldLimit := tt.maxSize > 0 && tx.actionCount >= tt.maxSize
+			assert.Equal(t, tt.wantShouldLimit, shouldLimit)
+		})
+	}
+}
+
+func TestWalTransaction_ClearResetsActionCount(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, false, 10)
+	tx.actionCount = 5
+	tx.Actions = []ActionData{{Schema: "test", Table: "table", Kind: ActionKindInsert}}
+
+	tx.Clear()
+
+	assert.Equal(t, 0, tx.actionCount)
+	assert.Equal(t, ([]ActionData)(nil), tx.Actions)
+}
+
+func TestWalTransaction_ClearActionsResetsActionCount(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, false, 10)
+	tx.actionCount = 5
+	tx.Actions = []ActionData{{Schema: "test", Table: "table", Kind: ActionKindInsert}}
+
+	tx.ClearActions()
+
+	assert.Equal(t, 0, tx.actionCount)
+	assert.Equal(t, ([]ActionData)(nil), tx.Actions)
 }
