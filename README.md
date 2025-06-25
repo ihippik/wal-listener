@@ -95,6 +95,7 @@ Notes:
    [#SQL-ALTERTABLE-REPLICA-IDENTITY](https://www.postgresql.org/docs/current/sql-altertable.html#SQL-ALTERTABLE-REPLICA-IDENTITY)
 
 ## Service configuration
+> All config entities are written in camelCase, except for the database entities themselves
 ```yaml
 listener:
   slotName: myslot_1

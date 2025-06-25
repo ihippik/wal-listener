@@ -47,11 +47,11 @@ type PublisherCfg struct {
 	Address         string
 	Topic           string `valid:"required"`
 	TopicPrefix     string
-	EnableTLS       bool   `mapstructure:"enable_tls"`
-	ClientCert      string `mapstructure:"client_cert"`
-	ClientKey       string `mapstructure:"client_key"`
-	CACert          string `mapstructure:"ca_cert"`
-	PubSubProjectID string `mapstructure:"pubsub_project_id"`
+	EnableTLS       bool
+	ClientCert      string
+	ClientKey       string
+	CACert          string
+	PubSubProjectID string
 }
 
 func (c PublisherCfg) IsMessageKeyExists() bool {
