@@ -857,6 +857,75 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "parse truncate message",
+			args: args{
+				// 84 - T,
+				// 0,0,0,1 = 1 int32, relations number
+				// 0 = options
+				// 0,0,64,14 = 16398 int32 - relation id
+				msg: []byte{
+					84,
+					0, 0, 0, 1,
+					0,
+					0, 0, 64, 14,
+				},
+				tx: &WAL{
+					monitor:    metrics,
+					log:        logger,
+					LSN:        4,
+					BeginTime:  &postgresEpoch,
+					CommitTime: &postgresEpoch,
+					RelationStore: map[int32]RelationData{
+						16398: {
+							Schema: "public",
+							Table:  "users",
+							Columns: []Column{
+								{
+									log:       logger,
+									name:      "id",
+									value:     nil,
+									valueType: pgtype.Int4OID,
+									isKey:     true,
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &WAL{
+				monitor:    metrics,
+				log:        logger,
+				LSN:        4,
+				BeginTime:  &postgresEpoch,
+				CommitTime: &postgresEpoch,
+				RelationStore: map[int32]RelationData{
+					16398: {
+						Schema: "public",
+						Table:  "users",
+						Columns: []Column{
+							{
+								log:       logger,
+								name:      "id",
+								value:     nil,
+								valueType: pgtype.Int4OID,
+								isKey:     true,
+							},
+						},
+					},
+				},
+				Actions: []ActionData{
+					{
+						Schema:     "public",
+						Table:      "users",
+						Kind:       ActionKindTruncate,
+						NewColumns: []Column{},
+						OldColumns: []Column{},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "unknown message type",
 			args: args{
 				msg: []byte{
@@ -913,7 +982,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 					},
 				},
 			},
-			wantErr: true,
+			wantErr: false,
 		},
 	}
 
