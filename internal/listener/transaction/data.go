@@ -14,9 +14,10 @@ type ActionKind string
 
 // kind of WAL message.
 const (
-	ActionKindInsert ActionKind = "INSERT"
-	ActionKindUpdate ActionKind = "UPDATE"
-	ActionKindDelete ActionKind = "DELETE"
+	ActionKindInsert   ActionKind = "INSERT"
+	ActionKindUpdate   ActionKind = "UPDATE"
+	ActionKindDelete   ActionKind = "DELETE"
+	ActionKindTruncate ActionKind = "TRUNCATE"
 )
 
 func (k ActionKind) string() string {

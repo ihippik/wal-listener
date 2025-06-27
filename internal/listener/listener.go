@@ -186,7 +186,7 @@ func (l *Listener) Process(ctx context.Context) error {
 	logger.Info("service was started")
 
 	if err := l.repository.CreatePublication(ctx, publicationName); err != nil {
-		logger.Warn("publication creation was skipped", "err", err)
+		logger.Warn("publication creation was skipped", "msg", err)
 	}
 
 	slotIsExists, err := l.slotIsExists(ctx)
@@ -298,7 +298,7 @@ const (
 )
 
 // Stream receives event from PostgreSQL.
-// Accept message, apply filter and publish it in NATS server.
+// Accept the message, apply a filter and publish it in the NATS server.
 func (l *Listener) Stream(ctx context.Context) error {
 	if err := l.replicator.StartReplication(
 		l.cfg.Listener.SlotName,

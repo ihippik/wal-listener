@@ -8,7 +8,7 @@ const (
 	// CommitMsgType protocol commit message type.
 	CommitMsgType byte = 'C'
 
-	// BeginMsgType protocol begin message type.
+	// BeginMsgType protocols begin message type.
 	BeginMsgType byte = 'B'
 
 	// OriginMsgType protocol original message type.
@@ -20,7 +20,7 @@ const (
 	// TypeMsgType protocol message type.
 	TypeMsgType byte = 'Y'
 
-	// InsertMsgType protocol insert message type.
+	// InsertMsgType protocols insert message type.
 	InsertMsgType byte = 'I'
 
 	// UpdateMsgType protocol update message type.
@@ -28,6 +28,9 @@ const (
 
 	// DeleteMsgType protocol delete message type.
 	DeleteMsgType byte = 'D'
+
+	// TruncateMsgType protocol truncate message type.
+	TruncateMsgType byte = 'T'
 
 	// NewTupleDataType protocol new tuple data type.
 	NewTupleDataType byte = 'N'
@@ -47,11 +50,11 @@ var postgresEpoch = time.Date(2000, time.January, 1, 0, 0, 0, 0, time.UTC)
 // Logical Replication Message Formats.
 // https://postgrespro.ru/docs/postgrespro/10/protocol-logicalrep-message-formats#
 type (
-	// Begin message format.
+	// Begin a message format.
 	Begin struct {
-		// Identifies the message as a begin message.
+		// Identifies the message as a beginning message.
 		LSN int64
-		// Commit timestamp of the transaction.
+		// Commit the timestamp of the transaction.
 		Timestamp time.Time
 		// 	Xid of the transaction.
 		XID int32
@@ -127,6 +130,17 @@ type (
 		OldTuple bool
 		// TupleData message part representing the contents of new tuple.
 		OldRow []TupleData
+	}
+
+	// Truncate message format.
+	Truncate struct {
+		// Number of relations
+		RelationsCount int32
+		// Option bits for TRUNCATE: 1 for CASCADE, 2 for RESTART IDENTITY
+		Option int8
+		// OID of the relation corresponding to the ID in the relation message.
+		// This field is repeated for each relation.
+		RelationIDs []int32
 	}
 )
 

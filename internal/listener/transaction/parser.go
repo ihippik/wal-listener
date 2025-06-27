@@ -18,12 +18,11 @@ type BinaryParser struct {
 }
 
 var (
-	ErrEmptyWALMessage    = errors.New("empty WAL message")
-	ErrMessageLost        = errors.New("messages are lost")
-	ErrUnknownMessageType = errors.New("unknown message type")
+	ErrEmptyWALMessage = errors.New("empty WAL message")
+	ErrMessageLost     = errors.New("messages are lost")
 )
 
-// NewBinaryParser create instance of binary parser.
+// NewBinaryParser create instance of a binary parser.
 func NewBinaryParser(logger *slog.Logger, byteOrder binary.ByteOrder) *BinaryParser {
 	return &BinaryParser{
 		log:       logger,
@@ -148,8 +147,29 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WAL) error {
 		}
 
 		tx.Actions = append(tx.Actions, action)
+	case TruncateMsgType:
+		trc := p.getTruncateMsg()
+
+		for _, relID := range trc.RelationIDs {
+			action, err := tx.CreateActionData(
+				relID,
+				nil,
+				nil,
+				ActionKindTruncate,
+			)
+			if err != nil {
+				return fmt.Errorf("create action data: %w", err)
+			}
+
+			tx.Actions = append(tx.Actions, action)
+		}
+
+		p.log.Debug(
+			"truncate type message was received",
+			slog.Any("num of relations", trc.RelationsCount),
+		)
 	default:
-		return fmt.Errorf("%w : %s", ErrUnknownMessageType, []byte{p.msgType})
+		p.log.Warn("unknown type message was received", slog.String("type", string(p.msgType)))
 	}
 
 	return nil
@@ -187,6 +207,21 @@ func (p *BinaryParser) getDeleteMsg() Delete {
 		OldTuple:   p.charIsExists('O'),
 		OldRow:     p.readTupleData(),
 	}
+}
+
+func (p *BinaryParser) getTruncateMsg() Truncate {
+	var trunc Truncate
+
+	trunc.RelationsCount = p.readInt32()
+	trunc.Option = p.readInt8()
+
+	trunc.RelationIDs = make([]int32, 0, int(trunc.RelationsCount))
+
+	for range trunc.RelationsCount {
+		trunc.RelationIDs = append(trunc.RelationIDs, p.readInt32())
+	}
+
+	return trunc
 }
 
 func (p *BinaryParser) getUpdateMsg() Update {

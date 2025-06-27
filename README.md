@@ -13,7 +13,7 @@ To maintain the consistency of data in the system, we will use **transactional m
 publishing events in a single transaction with a domain model change.
 
 The service allows you to subscribe to changes in the PostgreSQL database using its logical decoding capability
-and publish them to the NATS Streaming server.
+and publish them to a message broker.
 
 ## Logic of work
 To receive events about data changes in our PostgreSQL DB
@@ -68,6 +68,12 @@ listener:
 This filter means that we only process events occurring with the `users` table,
 and in particular `insert` and `update` data.
 
+**Possible filters**:
+- insert
+- update
+- delete
+- truncate
+
 ### Topic mapping
 By default, the output NATS topic name consists of prefix, DB schema, and DB table name,
 but if you want to send all updates in one topic, you should be configured the topic map:
@@ -87,7 +93,7 @@ You can delete the default publication and create your own (name: _wal-listener_
 
 https://www.postgresql.org/docs/current/sql-createpublication.html
 
-If you change the publication, do not forget to change the slot name or delete the current one.
+If you change the publication, remember to change the slot name or delete the current one.
 
 Notes:
 
