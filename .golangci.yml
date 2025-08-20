@@ -1,0 +1,10 @@
+version: "2"
+linters:
+  exclusions:
+    rules:
+      # Exclude some linters from running on tests files.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - govet
+          - funlen

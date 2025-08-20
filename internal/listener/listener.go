@@ -189,30 +189,33 @@ func (l *Listener) Process(ctx context.Context) error {
 		logger.Warn("publication creation was skipped", "msg", err)
 	}
 
-	slotIsExists, err := l.slotIsExists(ctx)
+	lsn, err := l.slotIsExists(ctx)
 	if err != nil {
 		return fmt.Errorf("slot is exists: %w", err)
 	}
 
-	if !slotIsExists {
+	if lsn > 0 {
+		logger.Info("slot already exists", slog.Uint64("lsn", lsn))
+	} else {
 		consistentPoint, _, err := l.replicator.CreateReplicationSlotEx(l.cfg.Listener.SlotName, pgOutputPlugin)
 		if err != nil {
 			return fmt.Errorf("create replication slot: %w", err)
 		}
 
-		lsn, err := pgx.ParseLSN(consistentPoint)
+		lsn, err = pgx.ParseLSN(consistentPoint)
 		if err != nil {
 			return fmt.Errorf("parse lsn: %w", err)
 		}
 
-		l.setLSN(lsn)
-
 		logger.Info("new slot was created", slog.String("slot", l.cfg.Listener.SlotName))
-	} else {
-		logger.Info("slot already exists, LSN updated")
 	}
 
-	if replicationActive, err := l.repository.IsReplicationActive(ctx, l.cfg.Listener.SlotName); err != nil || replicationActive {
+	l.setLSN(lsn)
+
+	if replicationActive, err := l.repository.IsReplicationActive(
+		ctx,
+		l.cfg.Listener.SlotName,
+	); err != nil || replicationActive {
 		l.log.Error(
 			"replication seems to already be alive or unable to check it",
 			slog.String("slot", l.cfg.Listener.SlotName),
@@ -265,25 +268,23 @@ func (l *Listener) checkConnection(ctx context.Context) error {
 }
 
 // slotIsExists checks whether a slot has already been created and if it has been created uses it.
-func (l *Listener) slotIsExists(ctx context.Context) (bool, error) {
+func (l *Listener) slotIsExists(ctx context.Context) (uint64, error) {
 	restartLSNStr, err := l.repository.GetSlotLSN(ctx, l.cfg.Listener.SlotName)
 	if err != nil {
-		return false, fmt.Errorf("get slot lsn: %w", err)
+		return 0, fmt.Errorf("get slot lsn: %w", err)
 	}
 
 	if len(restartLSNStr) == 0 {
 		l.log.Warn("restart LSN not found", slog.String("slot_name", l.cfg.Listener.SlotName))
-		return false, nil
+		return 0, nil
 	}
 
 	lsn, err := pgx.ParseLSN(restartLSNStr)
 	if err != nil {
-		return false, fmt.Errorf("parse lsn: %w", err)
+		return 0, fmt.Errorf("parse lsn: %w", err)
 	}
 
-	l.setLSN(lsn)
-
-	return true, nil
+	return lsn, nil
 }
 
 const (

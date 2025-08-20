@@ -62,7 +62,7 @@ func TestBinaryParser_readTupleData(t *testing.T) {
 		},
 	}
 
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -82,6 +82,7 @@ func TestBinaryParser_readColumns(t *testing.T) {
 	type fields struct {
 		buffer *bytes.Buffer
 	}
+
 	tests := []struct {
 		name   string
 		fields fields
@@ -115,7 +116,7 @@ func TestBinaryParser_readColumns(t *testing.T) {
 		},
 	}
 
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -135,6 +136,7 @@ func TestBinaryParser_getRelationMsg(t *testing.T) {
 	type fields struct {
 		src []byte
 	}
+
 	tests := []struct {
 		name   string
 		fields fields
@@ -168,7 +170,7 @@ func TestBinaryParser_getRelationMsg(t *testing.T) {
 		},
 	}
 
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -312,6 +314,7 @@ func TestBinaryParser_getInsertMsg(t *testing.T) {
 	type fields struct {
 		src []byte
 	}
+
 	tests := []struct {
 		name   string
 		fields fields
@@ -416,6 +419,7 @@ func TestBinaryParser_getBeginMsg(t *testing.T) {
 	type fields struct {
 		src []byte
 	}
+
 	tests := []struct {
 		name   string
 		fields fields

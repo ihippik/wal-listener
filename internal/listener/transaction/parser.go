@@ -300,6 +300,7 @@ func (p *BinaryParser) charIsExists(char byte) bool {
 	if p.buffer.Next(1)[0] == char {
 		return true
 	}
+
 	_ = p.buffer.UnreadByte()
 
 	return false

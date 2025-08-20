@@ -60,8 +60,12 @@ func (r RepositoryImpl) Close() error {
 func (r RepositoryImpl) IsReplicationActive(ctx context.Context, slotName string) (bool, error) {
 	var activePID int
 
-	err := r.conn.QueryRowEx(ctx, "SELECT active_pid FROM pg_replication_slots WHERE slot_name=$1 AND active=true;", nil, slotName).
-		Scan(&activePID)
+	err := r.conn.QueryRowEx(
+		ctx,
+		"SELECT active_pid FROM pg_replication_slots WHERE slot_name=$1 AND active=true;",
+		nil,
+		slotName,
+	).Scan(&activePID)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil

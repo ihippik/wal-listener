@@ -3,6 +3,7 @@ package publisher
 import (
 	"context"
 	"fmt"
+
 	"github.com/ihippik/wal-listener/v2/internal/config"
 
 	"github.com/goccy/go-json"
@@ -31,7 +32,7 @@ func (p *RabbitPublisher) Publish(ctx context.Context, topic string, event *Even
 
 	body, err := json.Marshal(event)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal: %w", err)
 	}
 
 	return p.publisher.PublishWithContext(

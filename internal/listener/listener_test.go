@@ -1,827 +1,623 @@
 package listener
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
-	"reflect"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	tx "github.com/ihippik/wal-listener/v2/internal/listener/transaction"
 	"github.com/jackc/pgx"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/ihippik/wal-listener/v2/internal/config"
-	tx "github.com/ihippik/wal-listener/v2/internal/listener/transaction"
-	"github.com/ihippik/wal-listener/v2/internal/publisher"
 )
 
-var (
-	errSimple = errors.New("some err")
-	epochNano = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
-)
+var epochNano = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
+
+var logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+func TestListener_liveness(t *testing.T) {
+	type fields struct {
+		repo func(*testing.T) repository
+		repl func(*testing.T) replication
+	}
+
+	tests := []struct {
+		name   string
+		fields fields
+
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name: "success",
+			fields: fields{
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("IsAlive").Return(true).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("IsAlive").Return(true).Once()
+					return r
+				},
+			},
+			expectedStatus: http.StatusOK,
+			expectedBody:   "ok",
+		},
+		{
+			name: "failed repo",
+			fields: fields{
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("IsAlive").Return(false).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("IsAlive").Return(true).Once()
+					return r
+				},
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed",
+		},
+		{
+			name: "failed replication",
+			fields: fields{
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("IsAlive").Return(false).Once()
+					return r
+				},
+				repo: func(t *testing.T) repository {
+					return newMockrepository(t)
+				},
+			},
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &Listener{
+				log:        logger,
+				repository: tt.fields.repo(t),
+				replicator: tt.fields.repl(t),
+			}
+
+			req := httptest.NewRequest(http.MethodGet, "/live", nil)
+			w := httptest.NewRecorder()
+
+			l.liveness(w, req)
+
+			res := w.Result()
+			defer res.Body.Close()
+
+			if res.StatusCode != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, res.StatusCode)
+			}
+
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if string(body) != tt.expectedBody {
+				t.Errorf("expected body %s, got %s", tt.expectedBody, string(body))
+			}
+
+			if got := res.Header.Get("Content-Type"); got != contentTypeTextPlain {
+				t.Errorf("expected Content-Type %s, got %s", contentTypeTextPlain, got)
+			}
+		})
+	}
+}
+
+func TestListener_readiness(t *testing.T) {
+	tests := []struct {
+		name           string
+		isAlive        bool
+		expectedStatus int
+		expectedBody   string
+	}{
+		{
+			name:           "success",
+			isAlive:        true,
+			expectedStatus: http.StatusOK,
+			expectedBody:   "ok",
+		},
+		{
+			name:           "failed",
+			isAlive:        false,
+			expectedStatus: http.StatusInternalServerError,
+			expectedBody:   "failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &Listener{
+				log: logger,
+			}
+
+			l.isAlive.Store(tt.isAlive)
+
+			req := httptest.NewRequest(http.MethodGet, "/ready", nil)
+			w := httptest.NewRecorder()
+
+			l.readiness(w, req)
+
+			res := w.Result()
+			defer res.Body.Close()
+
+			if res.StatusCode != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, res.StatusCode)
+			}
+
+			body, err := io.ReadAll(res.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if string(body) != tt.expectedBody {
+				t.Errorf("expected body %s, got %s", tt.expectedBody, string(body))
+			}
+
+			if got := res.Header.Get("Content-Type"); got != contentTypeTextPlain {
+				t.Errorf("expected Content-Type %s, got %s", contentTypeTextPlain, got)
+			}
+		})
+	}
+}
 
 func TestListener_slotIsExists(t *testing.T) {
 	type fields struct {
 		slotName string
+		repo     func(*testing.T) repository
 	}
 
-	repo := new(repositoryMock)
-
-	setGetSlotLSN := func(slotName, lsn string, err error) {
-		repo.On("GetSlotLSN", mock.Anything, slotName).
-			Return(lsn, err).
-			Once()
-	}
 	tests := []struct {
 		name    string
-		setup   func()
 		fields  fields
-		want    bool
-		wantErr bool
+		want    uint64
+		wantErr require.ErrorAssertionFunc
 	}{
 		{
 			name: "slot is exists",
-			setup: func() {
-				setGetSlotLSN("myslot", "0/17843B8", nil)
-			},
 			fields: fields{
 				slotName: "myslot",
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("GetSlotLSN", mock.Anything, "myslot").Return("0/17843B8", nil).Once()
+					return r
+				},
 			},
-			want:    true,
-			wantErr: false,
+			want:    24658872,
+			wantErr: require.NoError,
 		},
 		{
 			name: "empty lsn",
-			setup: func() {
-				setGetSlotLSN("myslot", "", nil)
-			},
 			fields: fields{
 				slotName: "myslot",
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("GetSlotLSN", mock.Anything, "myslot").Return("", nil).Once()
+					return r
+				},
 			},
-			want:    false,
-			wantErr: false,
+			want:    0,
+			wantErr: require.NoError,
 		},
 		{
 			name: "invalid lsn",
-			setup: func() {
-				setGetSlotLSN("myslot", "invalid", nil)
-			},
 			fields: fields{
 				slotName: "myslot",
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("GetSlotLSN", mock.Anything, "myslot").Return("invalid", nil).Once()
+					return r
+				},
 			},
-			want:    false,
-			wantErr: true,
+			want:    0,
+			wantErr: require.Error,
 		},
 		{
 			name: "repository error",
-			setup: func() {
-				setGetSlotLSN("myslot", "", errSimple)
-			},
 			fields: fields{
 				slotName: "myslot",
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("GetSlotLSN", mock.Anything, "myslot").
+						Return("", errors.New("some err")).
+						Once()
+					return r
+				},
 			},
-			want:    false,
-			wantErr: true,
+			want:    0,
+			wantErr: require.Error,
 		},
 	}
 
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.setup()
-
-			w := &Listener{
+			l := &Listener{
 				log: logger,
 				cfg: &config.Config{Listener: &config.ListenerCfg{
 					SlotName: tt.fields.slotName,
 				}},
-				repository: repo,
+				repository: tt.fields.repo(t),
 			}
 
-			got, err := w.slotIsExists(context.Background())
-			if (err != nil) != tt.wantErr {
-				t.Errorf("slotIsExists() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+			got, err := l.slotIsExists(context.Background())
+			tt.wantErr(t, err)
 
 			if got != tt.want {
 				t.Errorf("slotIsExists() got = %v, want %v", got, tt.want)
 			}
-
-			repo.AssertExpectations(t)
 		})
 	}
 }
 
 func TestListener_Stop(t *testing.T) {
-	repo := new(repositoryMock)
-	publ := new(publisherMock)
-	repl := new(replicatorMock)
-
-	setRepoClose := func(err error) {
-		repo.On("Close").
-			Return(err).
-			Once()
+	type fields struct {
+		monitor   func(*testing.T) monitor
+		publisher func(*testing.T) eventPublisher
+		repl      func(*testing.T) replication
+		repo      func(*testing.T) repository
 	}
-
-	setReplClose := func(err error) {
-		repl.On("Close").
-			Return(err).
-			Once()
-	}
-
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
 	tests := []struct {
 		name    string
-		setup   func()
-		wantErr error
+		fields  fields
+		wantErr require.ErrorAssertionFunc
 	}{
 		{
 			name: "success",
-			setup: func() {
-				setRepoClose(nil)
-				setReplClose(nil)
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("Close").Return(nil).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("Close").Return(nil).Once()
+					return r
+				},
 			},
-			wantErr: nil,
+			wantErr: require.NoError,
 		},
 		{
 			name: "repository error",
-			setup: func() {
-				setRepoClose(errors.New("repo err"))
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("Close").Return(errors.New("repo err")).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					return newMockreplication(t)
+				},
 			},
-			wantErr: errors.New("repository close: repo err"),
+			wantErr: func(t require.TestingT, err error, i ...any) {
+				require.ErrorContains(t, err, "repository close: repo err")
+			},
 		},
 		{
 			name: "replication error",
-			setup: func() {
-				setReplClose(errors.New("replication err"))
-				setRepoClose(nil)
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("Close").Return(nil).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("Close").Return(errors.New("replication err")).Once()
+					return r
+				},
 			},
-			wantErr: errors.New("replicator close: replication err"),
+			wantErr: func(t require.TestingT, err error, i ...any) {
+				require.ErrorContains(t, err, "replicator close: replication err")
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.setup()
-			w := &Listener{
+			l := &Listener{
 				log:        logger,
-				publisher:  publ,
-				replicator: repl,
-				repository: repo,
-			}
-			err := w.Stop()
-			if err != nil && assert.Error(t, tt.wantErr) {
-				assert.EqualError(t, err, tt.wantErr.Error())
+				monitor:    tt.fields.monitor(t),
+				publisher:  tt.fields.publisher(t),
+				replicator: tt.fields.repl(t),
+				repository: tt.fields.repo(t),
 			}
 
-			repo.AssertExpectations(t)
-			repl.AssertExpectations(t)
-			publ.AssertExpectations(t)
+			err := l.Stop()
+			tt.wantErr(t, err)
 		})
 	}
-}
-
-func nowInNano() uint64 {
-	return uint64(time.Now().UnixNano()-epochNano) / uint64(1000)
 }
 
 func TestListener_SendStandbyStatus(t *testing.T) {
 	type fields struct {
 		restartLSN uint64
+		repl       func(*testing.T) replication
+		repo       func(*testing.T) repository
 	}
 
-	repl := new(replicatorMock)
-	repo := new(repositoryMock)
-
-	setNewStandbyStatus := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
-		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond).Once()
-	}
-
-	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
-		repl.On(
-			"SendStandbyStatus",
-			standByStatusMatcher(status),
-		).
-			Return(err).
-			Once()
-	}
-
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	now := nowInNano()
 
 	tests := []struct {
 		name    string
 		setup   func()
 		fields  fields
-		wantErr bool
+		wantErr require.ErrorAssertionFunc
 	}{
 		{
 			name: "success",
-			setup: func() {
-				setNewStandbyStatus([]uint64{10}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
-
-				setSendStandbyStatus(
-					&pgx.StandbyStatus{
+			fields: fields{
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("NewStandbyStatus", []uint64{10}).Return(
+						&pgx.StandbyStatus{
+							WalWritePosition: 10,
+							WalFlushPosition: 10,
+							WalApplyPosition: 10,
+							ClientTime:       now,
+							ReplyRequested:   0,
+						},
+						nil,
+					).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("SendStandbyStatus", &pgx.StandbyStatus{
 						WalWritePosition: 10,
 						WalFlushPosition: 10,
 						WalApplyPosition: 10,
-						ClientTime:       nowInNano(),
+						ClientTime:       now,
 						ReplyRequested:   0,
-					},
-					nil,
-				)
-			},
-			fields: fields{
+					}).Return(nil).Once()
+					return r
+				},
 				restartLSN: 10,
 			},
-			wantErr: false,
-		},
-		{
-			name: "some replicator err",
-			setup: func() {
-				setNewStandbyStatus([]uint64{10}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
-
-				setSendStandbyStatus(
-					&pgx.StandbyStatus{
-						WalWritePosition: 10,
-						WalFlushPosition: 10,
-						WalApplyPosition: 10,
-						ClientTime:       nowInNano(),
-						ReplyRequested:   0,
-					},
-					errSimple,
-				)
-			},
-			fields: fields{
-				restartLSN: 10,
-			},
-			wantErr: true,
+			wantErr: require.NoError,
 		},
 		{
 			name: "some repo err",
-			setup: func() {
-				setNewStandbyStatus([]uint64{10}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, errors.New("some err"))
-			},
 			fields: fields{
 				restartLSN: 10,
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("NewStandbyStatus", []uint64{10}).Return(
+						&pgx.StandbyStatus{
+							WalWritePosition: 10,
+							WalFlushPosition: 10,
+							WalApplyPosition: 10,
+							ClientTime:       now,
+							ReplyRequested:   0,
+						},
+						errors.New("repo err"),
+					).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					return newMockreplication(t)
+				},
 			},
-			wantErr: true,
+			wantErr: func(t require.TestingT, err error, i ...any) {
+				require.ErrorContains(t, err, "unable to create StandbyStatus object: repo err")
+			},
+		},
+		{
+			name: "some replicator err",
+			fields: fields{
+				restartLSN: 10,
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("NewStandbyStatus", []uint64{10}).Return(
+						&pgx.StandbyStatus{
+							WalWritePosition: 10,
+							WalFlushPosition: 10,
+							WalApplyPosition: 10,
+							ClientTime:       now,
+							ReplyRequested:   0,
+						},
+						nil,
+					).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("SendStandbyStatus", &pgx.StandbyStatus{
+						WalWritePosition: 10,
+						WalFlushPosition: 10,
+						WalApplyPosition: 10,
+						ClientTime:       now,
+						ReplyRequested:   0,
+					}).Return(errors.New("replication err")).Once()
+					return r
+				},
+			},
+			wantErr: func(t require.TestingT, err error, i ...any) {
+				require.ErrorContains(t, err, "unable to send StandbyStatus object: replication err")
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer repl.AssertExpectations(t)
-			defer repo.AssertExpectations(t)
-
-			tt.setup()
-
-			w := &Listener{
+			l := &Listener{
 				log:        logger,
-				replicator: repl,
-				repository: repo,
+				replicator: tt.fields.repl(t),
+				repository: tt.fields.repo(t),
 				lsn:        tt.fields.restartLSN,
 			}
 
-			if err := w.SendStandbyStatus(); (err != nil) != tt.wantErr {
-				t.Errorf("SendStandbyStatus() error = %v, wantErr %v", err, tt.wantErr)
-			}
+			err := l.SendStandbyStatus()
+			tt.wantErr(t, err)
 		})
 	}
-}
-
-func abs(val int64) int64 {
-	if val < 0 {
-		return val * -1
-	}
-	return val
-}
-
-func standByStatusMatcher(want *pgx.StandbyStatus) any {
-	return mock.MatchedBy(func(got *pgx.StandbyStatus) bool {
-		return want.ReplyRequested == got.ReplyRequested &&
-			want.WalApplyPosition == got.WalApplyPosition &&
-			want.WalFlushPosition == got.WalFlushPosition &&
-			want.WalWritePosition == got.WalWritePosition &&
-			abs(int64(got.ClientTime)-int64(want.ClientTime)) < 1000
-	})
 }
 
 func TestListener_AckWalMessage(t *testing.T) {
 	type fields struct {
 		restartLSN uint64
+		repl       func(*testing.T) replication
+		repo       func(*testing.T) repository
 	}
 
 	type args struct {
 		LSN uint64
 	}
 
-	repl := new(replicatorMock)
-	repo := new(repositoryMock)
-
-	setNewStandbyStatus := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
-		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond).Once()
-	}
-
-	setSendStandbyStatus := func(status *pgx.StandbyStatus, err error) {
-		repl.On(
-			"SendStandbyStatus",
-			standByStatusMatcher(status),
-		).
-			Return(err).
-			Once()
-	}
+	now := nowInNano()
 
 	tests := []struct {
 		name    string
-		setup   func()
 		fields  fields
 		args    args
-		wantErr bool
+		wantErr require.ErrorAssertionFunc
 	}{
 		{
 			name: "success",
-			setup: func() {
-				setNewStandbyStatus([]uint64{24658872}, &pgx.StandbyStatus{
-					WalWritePosition: 24658872,
-					WalFlushPosition: 24658872,
-					WalApplyPosition: 24658872,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
-
-				setSendStandbyStatus(
-					&pgx.StandbyStatus{
+			fields: fields{
+				restartLSN: 0,
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("NewStandbyStatus", []uint64{24658872}).Return(
+						&pgx.StandbyStatus{
+							WalWritePosition: 24658872,
+							WalFlushPosition: 24658872,
+							WalApplyPosition: 24658872,
+							ClientTime:       now,
+							ReplyRequested:   0,
+						},
+						nil,
+					).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("SendStandbyStatus", &pgx.StandbyStatus{
 						WalWritePosition: 24658872,
 						WalFlushPosition: 24658872,
 						WalApplyPosition: 24658872,
-						ClientTime:       nowInNano(),
+						ClientTime:       now,
 						ReplyRequested:   0,
-					},
-					nil,
-				)
-			},
-			fields: fields{
-				restartLSN: 0,
+					}).Return(nil).Once()
+					return r
+				},
 			},
 			args: args{
 				LSN: 24658872,
 			},
-			wantErr: false,
+			wantErr: require.NoError,
 		},
 		{
 			name: "send status error",
-			setup: func() {
-				setNewStandbyStatus([]uint64{24658872}, &pgx.StandbyStatus{
-					WalWritePosition: 24658872,
-					WalFlushPosition: 24658872,
-					WalApplyPosition: 24658872,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
-
-				setSendStandbyStatus(
-					&pgx.StandbyStatus{
+			fields: fields{
+				restartLSN: 0,
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("NewStandbyStatus", []uint64{24658872}).Return(
+						&pgx.StandbyStatus{
+							WalWritePosition: 24658872,
+							WalFlushPosition: 24658872,
+							WalApplyPosition: 24658872,
+							ClientTime:       now,
+							ReplyRequested:   0,
+						},
+						nil,
+					).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("SendStandbyStatus", &pgx.StandbyStatus{
 						WalWritePosition: 24658872,
 						WalFlushPosition: 24658872,
 						WalApplyPosition: 24658872,
-						ClientTime:       nowInNano(),
+						ClientTime:       now,
 						ReplyRequested:   0,
-					},
-					errSimple,
-				)
-			},
-			fields: fields{
-				restartLSN: 0,
+					}).Return(errors.New("some err")).Once()
+					return r
+				},
 			},
 			args: args{
 				LSN: 24658872,
 			},
-			wantErr: true,
-		},
-	}
-
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.setup()
-			w := &Listener{
-				log:        logger,
-				replicator: repl,
-				repository: repo,
-				lsn:        tt.fields.restartLSN,
-			}
-			if err := w.AckWalMessage(tt.args.LSN); (err != nil) != tt.wantErr {
-				t.Errorf("AckWalMessage() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			repl.AssertExpectations(t)
-		})
-	}
-}
-
-func TestListener_Stream(t *testing.T) {
-	t.Skip() // FIXME
-
-	repo := new(repositoryMock)
-	publ := new(publisherMock)
-	repl := new(replicatorMock)
-	prs := new(parserMock)
-
-	type fields struct {
-		config     *config.Config
-		slotName   string
-		restartLSN uint64
-	}
-
-	type args struct {
-		timeout time.Duration
-	}
-
-	setNewStandbyStatus := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
-		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond)
-	}
-
-	setParseWalMessageOnce := func(msg []byte, tx *tx.WAL, err error) {
-		prs.On("ParseWalMessage", msg, tx).Return(err)
-	}
-
-	setStartReplication := func(err error, slotName string, startLsn uint64, timeline int64, pluginArguments ...string) {
-		repl.On(
-			"StartReplication",
-			slotName,
-			startLsn,
-			timeline,
-			pluginArguments,
-		).Return(err)
-	}
-
-	setWaitForReplicationMessage := func(msg *pgx.ReplicationMessage, err error) {
-		repl.On(
-			"WaitForReplicationMessage",
-			mock.Anything,
-		).Return(msg, err).After(10 * time.Millisecond)
-	}
-
-	setSendStandbyStatus := func(want *pgx.StandbyStatus, err error) {
-		repl.On(
-			"SendStandbyStatus",
-			mock.MatchedBy(func(got *pgx.StandbyStatus) bool {
-				return want.ReplyRequested == got.ReplyRequested &&
-					want.WalFlushPosition == got.WalFlushPosition &&
-					want.WalWritePosition == got.WalWritePosition &&
-					abs(int64(want.ClientTime)-int64(got.ClientTime)) < 100000
-			}),
-		).Return(err).After(10 * time.Millisecond)
-	}
-
-	setPublish := func(subject string, want publisher.Event, err error) {
-		publ.On("Publish", mock.Anything, subject, mock.MatchedBy(func(got publisher.Event) bool {
-			ok := want.Action == got.Action &&
-				reflect.DeepEqual(want.Data, got.Data) &&
-				want.ID == got.ID &&
-				want.Schema == got.Schema &&
-				want.Table == got.Table &&
-				want.EventTime.Sub(got.EventTime).Milliseconds() < 1000
-			if !ok {
-				t.Errorf("- want + got\n- %#+v\n+ %#+v", want, got)
-			}
-			return ok
-		})).Return(err)
-	}
-
-	uuid.SetRand(bytes.NewReader(make([]byte, 512)))
-
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	metrics := new(monitorMock)
-
-	tests := []struct {
-		name    string
-		setup   func()
-		fields  fields
-		args    args
-		wantErr error
-	}{
-		{
-			name: "success",
-			setup: func() {
-				setStartReplication(
-					nil,
-					"myslot",
-					uint64(0),
-					int64(-1),
-					protoVersion,
-					"publication_names 'wal-listener'",
-				)
-
-				setNewStandbyStatus([]uint64{10}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
-
-				setSendStandbyStatus(
-					&pgx.StandbyStatus{
-						WalWritePosition: 10,
-						WalFlushPosition: 10,
-						WalApplyPosition: 10,
-						ClientTime:       nowInNano(),
-						ReplyRequested:   0,
-					},
-					nil,
-				)
-
-				setParseWalMessageOnce(
-					[]byte(`some bytes`),
-					tx.NewWAL(logger, nil, metrics),
-					nil,
-				)
-
-				setPublish(
-					"STREAM.pre_public_users",
-					publisher.Event{
-						ID:        uuid.MustParse("00000000-0000-4000-8000-000000000000"),
-						Schema:    "public",
-						Table:     "users",
-						Action:    "INSERT",
-						Data:      map[string]any{"id": 1},
-						EventTime: time.Now(),
-					},
-					nil,
-				)
-
-				setWaitForReplicationMessage(
-					&pgx.ReplicationMessage{
-						WalMessage: &pgx.WalMessage{
-							WalStart:     10,
-							ServerWalEnd: 0,
-							ServerTime:   0,
-							WalData:      []byte(`some bytes`),
-						},
-						ServerHeartbeat: &pgx.ServerHeartbeat{
-							ServerWalEnd:   0,
-							ServerTime:     0,
-							ReplyRequested: 1,
-						},
-					},
-					nil,
-				)
+			wantErr: func(t require.TestingT, err error, i ...any) {
+				require.ErrorContains(t, err, "send status: unable to send StandbyStatus object: some err")
 			},
-			fields: fields{
-				config: &config.Config{
-					Listener: &config.ListenerCfg{
-						SlotName:          "myslot",
-						AckTimeout:        0,
-						HeartbeatInterval: 5 * time.Millisecond,
-						Filter: config.FilterStruct{
-							Tables: map[string][]string{"users": {"insert"}},
-						},
-					},
-					Publisher: &config.PublisherCfg{
-						Topic:       "STREAM",
-						TopicPrefix: "pre_",
-					},
-				},
-				slotName:   "myslot",
-				restartLSN: 0,
-			},
-			args: args{
-				timeout: 5 * time.Millisecond,
-			},
-		},
-		{
-			name: "start replication err",
-			setup: func() {
-				setStartReplication(
-					errSimple,
-					"myslot",
-					uint64(0),
-					int64(-1),
-					protoVersion,
-					"publication_names 'wal-listener'",
-				)
-			},
-			fields: fields{
-				config: &config.Config{
-					Listener: &config.ListenerCfg{
-						SlotName:          "myslot",
-						AckTimeout:        0,
-						HeartbeatInterval: 1, Filter: config.FilterStruct{
-							Tables: map[string][]string{"users": {"insert"}},
-						},
-					},
-					Publisher: &config.PublisherCfg{
-						Topic:       "stream",
-						TopicPrefix: "pre_",
-					},
-				},
-				slotName:   "myslot",
-				restartLSN: 0,
-			},
-			args: args{
-				timeout: 100 * time.Microsecond,
-			},
-			wantErr: errors.New("start replication: some err"),
-		},
-		{
-			name: "wait for replication message err",
-			setup: func() {
-				setStartReplication(
-					nil,
-					"myslot",
-					uint64(0),
-					int64(-1),
-					protoVersion,
-					"publication_names 'wal-listener'",
-				)
-
-				setNewStandbyStatus([]uint64{0}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   10,
-				}, nil)
-
-				setSendStandbyStatus(
-					&pgx.StandbyStatus{
-						WalWritePosition: 10,
-						WalFlushPosition: 10,
-						WalApplyPosition: 10,
-						ClientTime:       nowInNano(),
-						ReplyRequested:   0,
-					},
-					nil,
-				)
-
-				setWaitForReplicationMessage(
-					&pgx.ReplicationMessage{
-						WalMessage: &pgx.WalMessage{
-							WalStart:     10,
-							ServerWalEnd: 0,
-							ServerTime:   0,
-							WalData:      []byte(`some bytes`),
-						},
-						ServerHeartbeat: &pgx.ServerHeartbeat{
-							ServerWalEnd:   0,
-							ServerTime:     0,
-							ReplyRequested: 1,
-						},
-					},
-					errSimple,
-				)
-			},
-			fields: fields{
-				config: &config.Config{
-					Listener: &config.ListenerCfg{
-						SlotName:          "myslot",
-						AckTimeout:        0,
-						HeartbeatInterval: 1, Filter: config.FilterStruct{
-							Tables: map[string][]string{"users": {"insert"}},
-						},
-					},
-					Publisher: &config.PublisherCfg{
-						Topic:       "stream",
-						TopicPrefix: "pre_",
-					},
-				},
-				slotName:   "myslot",
-				restartLSN: 0,
-			},
-			args: args{
-				timeout: 100 * time.Microsecond,
-			},
-			wantErr: errors.New("wait for replication message: some err"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer repl.AssertExpectations(t)
-
-			tt.setup()
-
-			ctx, _ := context.WithTimeout(context.Background(), tt.args.timeout)
-
 			w := &Listener{
 				log:        logger,
-				monitor:    metrics,
-				cfg:        tt.fields.config,
-				publisher:  publ,
-				replicator: repl,
-				repository: repo,
-				parser:     prs,
+				replicator: tt.fields.repl(t),
+				repository: tt.fields.repo(t),
 				lsn:        tt.fields.restartLSN,
 			}
-
-			if err := w.Stream(ctx); err != nil && assert.Error(t, tt.wantErr, err.Error()) {
-				assert.EqualError(t, err, tt.wantErr.Error())
-			} else {
-				assert.NoError(t, err)
-			}
-
-			repl.ExpectedCalls = nil
+			err := w.AckWalMessage(tt.args.LSN)
+			tt.wantErr(t, err)
 		})
 	}
 }
 
 func TestListener_Process(t *testing.T) {
+	type fields struct {
+		monitor   func(*testing.T) monitor
+		publisher func(*testing.T) eventPublisher
+		repl      func(*testing.T) replication
+		repo      func(*testing.T) repository
+		parser    func(*testing.T) parser
+	}
+
 	ctx := context.Background()
-	monitor := new(monitorMock)
-	parser := new(parserMock)
-	repo := new(repositoryMock)
-	repl := new(replicatorMock)
-	pub := new(publisherMock)
-
-	setCreatePublication := func(name string, err error) {
-		repo.On("CreatePublication", mock.Anything, name).Return(err).Once()
-	}
-
-	setGetSlotLSN := func(slotName string, lsn string, err error) {
-		repo.On("GetSlotLSN", mock.Anything, slotName).Return(lsn, err).Once()
-	}
-
-	setStartReplication := func(
-		err error,
-		slotName string,
-		startLsn uint64,
-		timeline int64,
-		pluginArguments ...string) {
-		repl.On("StartReplication", slotName, startLsn, timeline, pluginArguments).Return(err).Once()
-	}
-
-	setIsAlive := func(res bool) {
-		repl.On("IsAlive").Return(res)
-	}
-
-	setClose := func(err error) {
-		repl.On("Close").Return(err).Maybe()
-	}
-
-	setRepoClose := func(err error) {
-		repo.On("Close").Return(err)
-	}
-
-	setRepoIsAlive := func(res bool) {
-		repo.On("IsAlive").Return(res)
-	}
-
-	setWaitForReplicationMessage := func(mess *pgx.ReplicationMessage, err error) {
-		repl.On("WaitForReplicationMessage", mock.Anything).Return(mess, err)
-	}
-
-	setSendStandbyStatus := func(err error) {
-		repl.On("SendStandbyStatus", mock.Anything).Return(err)
-	}
-
-	setCreateReplicationSlotEx := func(slotName, outputPlugin, consistentPoint, snapshotName string, err error) {
-		repl.On("CreateReplicationSlotEx", slotName, outputPlugin).Return(consistentPoint, snapshotName, err)
-	}
-
-	setNewStandbyStatus := func(walPositions []uint64, status *pgx.StandbyStatus, err error) {
-		repo.On("NewStandbyStatus", walPositions).Return(status, err).After(10 * time.Millisecond)
-	}
-
-	setIsReplicationActive := func(slot string, res bool, err error) {
-		repo.On("IsReplicationActive", mock.Anything, slot).Return(res, err)
-	}
+	now := nowInNano()
 
 	tests := []struct {
 		name    string
+		fields  fields
 		cfg     *config.Config
 		setup   func()
-		wantErr error
+		wantErr require.ErrorAssertionFunc
 	}{
 		{
-			name: "success",
+			name: "success: empty wal msg",
 			cfg: &config.Config{
 				Listener: &config.ListenerCfg{
 					SlotName:          "slot1",
@@ -835,36 +631,165 @@ func TestListener_Process(t *testing.T) {
 				},
 			},
 			setup: func() {
-				ctx, _ = context.WithTimeout(ctx, time.Millisecond*200)
-
-				setIsReplicationActive("slot1", false, nil)
-
-				setNewStandbyStatus([]uint64{1099511628288}, &pgx.StandbyStatus{
-					WalWritePosition: 10,
-					WalFlushPosition: 10,
-					WalApplyPosition: 10,
-					ClientTime:       nowInNano(),
-					ReplyRequested:   0,
-				}, nil)
-
-				setCreatePublication("wal-listener", nil)
-				setGetSlotLSN("slot1", "100/200", nil)
-				setStartReplication(
-					nil,
-					"slot1",
-					1099511628288,
-					-1,
-					"proto_version '1'",
-					"publication_names 'wal-listener'",
-				)
-				setIsAlive(true)
-				setRepoIsAlive(true)
-				setWaitForReplicationMessage(nil, nil)
-				setSendStandbyStatus(nil)
-				setClose(nil)
-				setRepoClose(nil)
+				ctx, _ = context.WithTimeout(context.Background(), time.Millisecond*100)
 			},
-			wantErr: nil,
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				parser: func(t *testing.T) parser {
+					return newMockparser(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("IsReplicationActive", mock.Anything, "slot1").Return(false, nil).Once()
+					r.On("NewStandbyStatus", []uint64{1099511628288}).Return(
+						&pgx.StandbyStatus{
+							WalWritePosition: 10,
+							WalFlushPosition: 10,
+							WalApplyPosition: 10,
+							ClientTime:       now,
+							ReplyRequested:   0,
+						},
+						nil,
+					)
+					r.On("CreatePublication", mock.Anything, "wal-listener").Return(nil).Once()
+					r.On("GetSlotLSN", mock.Anything, "slot1").Return("100/200", nil).Once()
+					r.On("IsAlive").Return(true)
+					r.On("Close").Return(nil).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("SendStandbyStatus", &pgx.StandbyStatus{
+						WalWritePosition: 10,
+						WalFlushPosition: 10,
+						WalApplyPosition: 10,
+						ClientTime:       now,
+						ReplyRequested:   0,
+					}).Return(errors.New("some err"))
+					r.On(
+						"StartReplication",
+						"slot1",
+						uint64(1099511628288),
+						int64(-1),
+						[]string{"proto_version '1'", "publication_names 'wal-listener'"},
+					).Return(nil).Once()
+					r.On("WaitForReplicationMessage", mock.Anything).Return(nil, nil)
+					r.On("IsAlive").Return(true)
+					r.On("Close").Return(nil).Once()
+
+					return r
+				},
+			},
+			wantErr: require.NoError,
+		},
+		{
+			name: "start replication failed",
+			cfg: &config.Config{
+				Listener: &config.ListenerCfg{
+					SlotName:          "slot1",
+					AckTimeout:        0,
+					RefreshConnection: time.Second,
+					HeartbeatInterval: time.Second,
+					Filter: config.FilterStruct{
+						Tables: nil,
+					},
+					TopicsMap: nil,
+				},
+			},
+			setup: func() {
+				ctx, _ = context.WithTimeout(context.Background(), time.Millisecond*100)
+			},
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				parser: func(t *testing.T) parser {
+					return newMockparser(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("IsReplicationActive", mock.Anything, "slot1").Return(false, nil).Once()
+					r.On("CreatePublication", mock.Anything, "wal-listener").Return(nil).Once()
+					r.On("GetSlotLSN", mock.Anything, "slot1").Return("100/200", nil).Once()
+					r.On("Close").Return(nil).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On(
+						"StartReplication",
+						"slot1",
+						uint64(1099511628288),
+						int64(-1),
+						[]string{"proto_version '1'", "publication_names 'wal-listener'"},
+					).Return(errors.New("some err")).Once()
+					r.On("Close").Return(nil).Once()
+
+					return r
+				},
+			},
+			wantErr: require.Error,
+		},
+		{
+			name: "wait for replication message failed",
+			cfg: &config.Config{
+				Listener: &config.ListenerCfg{
+					SlotName:          "slot1",
+					AckTimeout:        0,
+					RefreshConnection: time.Second,
+					HeartbeatInterval: time.Second,
+					Filter: config.FilterStruct{
+						Tables: nil,
+					},
+					TopicsMap: nil,
+				},
+			},
+			setup: func() {
+				ctx, _ = context.WithTimeout(context.Background(), time.Millisecond*100)
+			},
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				parser: func(t *testing.T) parser {
+					return newMockparser(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("IsReplicationActive", mock.Anything, "slot1").Return(false, nil).Once()
+					r.On("CreatePublication", mock.Anything, "wal-listener").Return(nil).Once()
+					r.On("GetSlotLSN", mock.Anything, "slot1").Return("100/200", nil).Once()
+					r.On("Close").Return(nil).Once()
+					return r
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On(
+						"StartReplication",
+						"slot1",
+						uint64(1099511628288),
+						int64(-1),
+						[]string{"proto_version '1'", "publication_names 'wal-listener'"},
+					).Return(nil).Once()
+					r.On("WaitForReplicationMessage", mock.Anything).
+						Return(nil, errors.New("some err")).Once()
+					r.On("Close").Return(nil).Once()
+
+					return r
+				},
+			},
+			wantErr: require.Error,
 		},
 		{
 			name: "skip create publication",
@@ -872,8 +797,8 @@ func TestListener_Process(t *testing.T) {
 				Listener: &config.ListenerCfg{
 					SlotName:          "slot1",
 					AckTimeout:        0,
-					RefreshConnection: 1,
-					HeartbeatInterval: 2,
+					RefreshConnection: time.Second,
+					HeartbeatInterval: 1,
 					Filter: config.FilterStruct{
 						Tables: nil,
 					},
@@ -881,25 +806,60 @@ func TestListener_Process(t *testing.T) {
 				},
 			},
 			setup: func() {
-				ctx, _ = context.WithTimeout(ctx, time.Millisecond*20)
-				setCreatePublication("wal-listener", errors.New("some err"))
-				setGetSlotLSN("slot1", "100/200", nil)
-				setStartReplication(
-					nil,
-					"slot1",
-					1099511628288,
-					-1,
-					"proto_version '1'",
-					"publication_names 'wal-listener'",
-				)
-				setIsAlive(true)
-				setRepoIsAlive(true)
-				setWaitForReplicationMessage(nil, nil)
-				setSendStandbyStatus(nil)
-				setClose(nil)
-				setRepoClose(nil)
+				ctx, _ = context.WithTimeout(context.Background(), time.Millisecond*100)
 			},
-			wantErr: nil,
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				parser: func(t *testing.T) parser {
+					return newMockparser(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On(
+						"StartReplication",
+						"slot1",
+						uint64(1099511628288),
+						int64(-1),
+						[]string{"proto_version '1'", "publication_names 'wal-listener'"},
+					).Return(nil).Once()
+					r.On("WaitForReplicationMessage", mock.Anything).Return(nil, nil)
+					r.On("SendStandbyStatus", &pgx.StandbyStatus{
+						WalWritePosition: 10,
+						WalFlushPosition: 10,
+						WalApplyPosition: 10,
+						ClientTime:       now,
+						ReplyRequested:   0,
+					}).Return(nil)
+					r.On("Close").Return(nil)
+
+					return r
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("CreatePublication", mock.Anything, "wal-listener").Return(errors.New("some err")).Once()
+					r.On("GetSlotLSN", mock.Anything, "slot1").Return("100/200", nil).Once()
+					r.On("IsReplicationActive", mock.Anything, "slot1").Return(false, nil).Once()
+					r.On("NewStandbyStatus", []uint64{1099511628288}).Return(
+						&pgx.StandbyStatus{
+							WalWritePosition: 10,
+							WalFlushPosition: 10,
+							WalApplyPosition: 10,
+							ClientTime:       now,
+							ReplyRequested:   0,
+						},
+						nil,
+					)
+					r.On("Close").Return(nil).Once()
+
+					return r
+				},
+			},
+			wantErr: require.NoError,
 		},
 		{
 			name: "get slot error",
@@ -916,11 +876,31 @@ func TestListener_Process(t *testing.T) {
 				},
 			},
 			setup: func() {
-				ctx, _ = context.WithTimeout(ctx, time.Millisecond*20)
-				setCreatePublication("wal-listener", nil)
-				setGetSlotLSN("slot1", "100/200", errors.New("some err"))
+				ctx, _ = context.WithTimeout(context.Background(), time.Millisecond*100)
 			},
-			wantErr: errors.New("slot is exists: get slot lsn: some err"),
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				parser: func(t *testing.T) parser {
+					return newMockparser(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				repl: func(t *testing.T) replication {
+					return newMockreplication(t)
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("CreatePublication", mock.Anything, "wal-listener").Return(nil).Once()
+					r.On("GetSlotLSN", mock.Anything, "slot1").Return("", errors.New("some err")).Once()
+					return r
+				},
+			},
+			wantErr: func(t require.TestingT, err error, i ...any) {
+				require.ErrorContains(t, err, "slot is exists: get slot lsn: some err")
+			},
 		},
 		{
 			name: "slot does not exists",
@@ -928,69 +908,338 @@ func TestListener_Process(t *testing.T) {
 				Listener: &config.ListenerCfg{
 					SlotName:          "slot1",
 					AckTimeout:        0,
-					RefreshConnection: 1,
-					HeartbeatInterval: 2,
+					RefreshConnection: time.Second,
+					HeartbeatInterval: time.Second,
 					Filter: config.FilterStruct{
 						Tables: nil,
 					},
 					TopicsMap: nil,
 				},
 			},
-			setup: func() {
-				ctx, _ = context.WithTimeout(ctx, time.Millisecond*20)
-				setCreatePublication("wal-listener", nil)
-				setGetSlotLSN("slot1", "", nil)
-				setCreateReplicationSlotEx(
-					"slot1",
-					"pgoutput",
-					"100/200",
-					"",
-					nil,
-				)
-				setStartReplication(
-					nil,
-					"slot1",
-					1099511628288,
-					-1,
-					"proto_version '1'",
-					"publication_names 'wal-listener'",
-				)
-				setIsAlive(true)
-				setRepoIsAlive(true)
-				setWaitForReplicationMessage(nil, nil)
-				setSendStandbyStatus(nil)
-				setClose(nil)
-				setRepoClose(nil)
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				parser: func(t *testing.T) parser {
+					return newMockparser(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On(
+						"StartReplication",
+						"slot1",
+						uint64(1099511628288),
+						int64(-1),
+						[]string{"proto_version '1'", "publication_names 'wal-listener'"},
+					).Return(nil).Once()
+					r.On("WaitForReplicationMessage", mock.Anything).Return(nil, nil)
+					r.On("CreateReplicationSlotEx", "slot1", "pgoutput").Return("100/200", "", nil).Once()
+					r.On("Close").Return(nil).Once()
+
+					return r
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("CreatePublication", mock.Anything, "wal-listener").Return(nil).Once()
+					r.On("GetSlotLSN", mock.Anything, "slot1").Return("", nil).Once()
+					r.On("IsReplicationActive", mock.Anything, "slot1").Return(false, nil).Once()
+					r.On("Close").Return(nil).Once()
+
+					return r
+				},
 			},
-			wantErr: nil,
+			setup: func() {
+				ctx, _ = context.WithTimeout(context.Background(), time.Millisecond*100)
+			},
+			wantErr: require.NoError,
+		},
+		{
+			name: "create slot failed",
+			cfg: &config.Config{
+				Listener: &config.ListenerCfg{
+					SlotName:          "slot1",
+					AckTimeout:        0,
+					RefreshConnection: time.Second,
+					HeartbeatInterval: time.Second,
+					Filter: config.FilterStruct{
+						Tables: nil,
+					},
+					TopicsMap: nil,
+				},
+			},
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				parser: func(t *testing.T) parser {
+					return newMockparser(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("CreateReplicationSlotEx", "slot1", "pgoutput").
+						Return("", "", errors.New("some err")).Once()
+
+					return r
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("CreatePublication", mock.Anything, "wal-listener").Return(nil).Once()
+					r.On("GetSlotLSN", mock.Anything, "slot1").Return("", nil).Once()
+
+					return r
+				},
+			},
+			setup: func() {
+				ctx, _ = context.WithTimeout(context.Background(), time.Millisecond*100)
+			},
+			wantErr: require.Error,
+		},
+		{
+			name: "check replication active failed",
+			cfg: &config.Config{
+				Listener: &config.ListenerCfg{
+					SlotName:          "slot1",
+					AckTimeout:        0,
+					RefreshConnection: time.Second,
+					HeartbeatInterval: time.Second,
+					Filter: config.FilterStruct{
+						Tables: nil,
+					},
+					TopicsMap: nil,
+				},
+			},
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				parser: func(t *testing.T) parser {
+					return newMockparser(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("CreateReplicationSlotEx", "slot1", "pgoutput").
+						Return("100/200", "", nil).Once()
+
+					return r
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("CreatePublication", mock.Anything, "wal-listener").Return(nil).Once()
+					r.On("GetSlotLSN", mock.Anything, "slot1").Return("", nil).Once()
+					r.On("IsReplicationActive", mock.Anything, "slot1").
+						Return(false, errors.New("some err")).Once()
+
+					return r
+				},
+			},
+			setup: func() {
+				ctx, _ = context.WithTimeout(context.Background(), time.Millisecond*100)
+			},
+			wantErr: require.Error,
 		},
 	}
 
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defer repo.AssertExpectations(t)
-			defer repl.AssertExpectations(t)
-
 			tt.setup()
 
 			l := NewWalListener(
 				tt.cfg,
 				logger,
-				repo,
-				repl,
-				pub,
-				parser,
-				monitor,
+				tt.fields.repo(t),
+				tt.fields.repl(t),
+				tt.fields.publisher(t),
+				tt.fields.parser(t),
+				tt.fields.monitor(t),
 			)
 
 			err := l.Process(ctx)
-			if err != nil && assert.Error(t, tt.wantErr, err.Error()) {
-				assert.EqualError(t, err, tt.wantErr.Error())
-			} else {
-				assert.NoError(t, tt.wantErr)
+			tt.wantErr(t, err)
+		})
+	}
+}
+
+func nowInNano() uint64 {
+	return uint64(time.Now().UnixNano()-epochNano) / uint64(1000)
+}
+
+func TestListener_processMessage(t *testing.T) {
+	type fields struct {
+		cfg       *config.Config
+		monitor   func(*testing.T) monitor
+		publisher func(*testing.T) eventPublisher
+		repl      func(*testing.T) replication
+		repo      func(*testing.T) repository
+		parser    func(*testing.T) parser
+	}
+
+	type args struct {
+		msg *pgx.ReplicationMessage
+	}
+
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr require.ErrorAssertionFunc
+	}{
+		{
+			name: "empty message",
+			args: args{
+				msg: &pgx.ReplicationMessage{
+					WalMessage:      nil,
+					ServerHeartbeat: nil,
+				},
+			},
+			fields: fields{
+				monitor: func(t *testing.T) monitor {
+					return newMockmonitor(t)
+				},
+				repl: func(t *testing.T) replication {
+					return newMockreplication(t)
+				},
+				repo: func(t *testing.T) repository {
+					return newMockrepository(t)
+				},
+				parser: func(t *testing.T) parser {
+					return newMockparser(t)
+				},
+				publisher: func(t *testing.T) eventPublisher {
+					return newMockeventPublisher(t)
+				},
+				cfg: &config.Config{
+					Listener: &config.ListenerCfg{
+						SlotName:          "slot1",
+						AckTimeout:        0,
+						RefreshConnection: time.Second,
+						HeartbeatInterval: time.Second,
+						Filter: config.FilterStruct{
+							Tables: nil,
+						},
+					},
+				},
+			},
+			wantErr: require.NoError,
+		},
+	}
+
+	ctx := context.Background()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			txWAL := tx.NewWAL(logger, nil, tt.fields.monitor(t))
+
+			l := &Listener{
+				cfg:        tt.fields.cfg,
+				log:        logger,
+				monitor:    tt.fields.monitor(t),
+				publisher:  tt.fields.publisher(t),
+				replicator: tt.fields.repl(t),
+				repository: tt.fields.repo(t),
+				parser:     tt.fields.parser(t),
 			}
+
+			err := l.processMessage(ctx, tt.args.msg, txWAL)
+			tt.wantErr(t, err)
+		})
+	}
+}
+
+func TestListener_processHeartBeat(t *testing.T) {
+	type fields struct {
+		cfg  *config.Config
+		repl func(*testing.T) replication
+		repo func(*testing.T) repository
+	}
+
+	type args struct {
+		msg *pgx.ReplicationMessage
+	}
+
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		{
+			name: "empty msg",
+			args: args{
+				msg: &pgx.ReplicationMessage{
+					WalMessage:      nil,
+					ServerHeartbeat: nil,
+				},
+			},
+			fields: fields{
+				repl: func(t *testing.T) replication {
+					return newMockreplication(t)
+				},
+				repo: func(t *testing.T) repository {
+					return newMockrepository(t)
+				},
+			},
+		},
+		{
+			name: "reply",
+			args: args{
+				msg: &pgx.ReplicationMessage{
+					WalMessage: &pgx.WalMessage{},
+					ServerHeartbeat: &pgx.ServerHeartbeat{
+						ServerWalEnd:   10,
+						ServerTime:     20,
+						ReplyRequested: 1,
+					},
+				},
+			},
+			fields: fields{
+				repl: func(t *testing.T) replication {
+					r := newMockreplication(t)
+					r.On("SendStandbyStatus", &pgx.StandbyStatus{
+						WalWritePosition: 10,
+						WalFlushPosition: 10,
+						WalApplyPosition: 10,
+						ClientTime:       200,
+						ReplyRequested:   0,
+					}).Return(nil).Once()
+					return r
+				},
+				repo: func(t *testing.T) repository {
+					r := newMockrepository(t)
+					r.On("NewStandbyStatus", []uint64{10}).
+						Return(
+							&pgx.StandbyStatus{
+								WalWritePosition: 10,
+								WalFlushPosition: 10,
+								WalApplyPosition: 10,
+								ClientTime:       200,
+								ReplyRequested:   0,
+							},
+							nil,
+						).Once()
+					return r
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &Listener{
+				cfg:        tt.fields.cfg,
+				log:        logger,
+				replicator: tt.fields.repl(t),
+				repository: tt.fields.repo(t),
+			}
+
+			l.processHeartBeat(tt.args.msg)
 		})
 	}
 }
