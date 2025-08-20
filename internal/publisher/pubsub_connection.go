@@ -28,7 +28,7 @@ func NewPubSubConnection(ctx context.Context, logger *slog.Logger, pubSubProject
 
 	cli, err := pubsub.NewClient(ctx, pubSubProjectID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new pub sub client: %w", err)
 	}
 
 	return &PubSubConnection{

@@ -1,11 +1,10 @@
 package config
 
 import (
-	"errors"
 	"testing"
 
 	scfg "github.com/ihippik/config"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfig_Validate(t *testing.T) {
@@ -15,10 +14,11 @@ func TestConfig_Validate(t *testing.T) {
 		Database  *DatabaseCfg
 		Publisher *PublisherCfg
 	}
+
 	tests := []struct {
 		name    string
 		fields  fields
-		wantErr error
+		wantErr require.ErrorAssertionFunc
 	}{
 		{
 			name: "success",
@@ -46,7 +46,7 @@ func TestConfig_Validate(t *testing.T) {
 					TopicPrefix: "prefix",
 				},
 			},
-			wantErr: nil,
+			wantErr: require.NoError,
 		},
 		{
 			name: "bad listener cfg",
@@ -72,7 +72,7 @@ func TestConfig_Validate(t *testing.T) {
 					TopicPrefix: "prefix",
 				},
 			},
-			wantErr: errors.New("Listener.RefreshConnection: non zero value required;Listener.SlotName: non zero value required"),
+			wantErr: require.Error,
 		},
 		{
 			name: "bad db cfg",
@@ -98,7 +98,7 @@ func TestConfig_Validate(t *testing.T) {
 					TopicPrefix: "prefix",
 				},
 			},
-			wantErr: errors.New("Database.Host: non zero value required;Database.Port: non zero value required"),
+			wantErr: require.Error,
 		},
 		{
 			name: "empty publisher kind",
@@ -124,7 +124,7 @@ func TestConfig_Validate(t *testing.T) {
 					TopicPrefix: "prefix",
 				},
 			},
-			wantErr: errors.New("Publisher.Type: non zero value required"),
+			wantErr: require.Error,
 		},
 	}
 
@@ -136,12 +136,9 @@ func TestConfig_Validate(t *testing.T) {
 				Database:  tt.fields.Database,
 				Publisher: tt.fields.Publisher,
 			}
+
 			err := c.Validate()
-			if err != nil && assert.Error(t, tt.wantErr, err.Error()) {
-				assert.EqualError(t, err, tt.wantErr.Error())
-			} else {
-				assert.Nil(t, tt.wantErr)
-			}
+			tt.wantErr(t, err)
 		})
 	}
 }

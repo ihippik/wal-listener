@@ -8,8 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/magiconair/properties/assert"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestWalTransaction_CreateActionData(t *testing.T) {
@@ -20,6 +19,7 @@ func TestWalTransaction_CreateActionData(t *testing.T) {
 		RelationStore map[int32]RelationData
 		Actions       []ActionData
 	}
+
 	type args struct {
 		relationID int32
 		oldRows    []TupleData
@@ -163,6 +163,7 @@ func TestColumn_AssertValue(t *testing.T) {
 		valueType int
 		isKey     bool
 	}
+
 	type args struct {
 		src []byte
 	}
