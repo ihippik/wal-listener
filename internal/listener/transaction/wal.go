@@ -10,11 +10,17 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/ihippik/wal-listener/v2/internal/config"
 	"github.com/ihippik/wal-listener/v2/internal/publisher"
+	"github.com/ihippik/wal-listener/v2/internal/transformer"
 )
 
 type monitor interface {
 	IncFilterSkippedEvents(table string)
+}
+
+type transformerEngine interface {
+	Transform(script string, data, oldData map[string]any, action string) (map[string]any, error)
 }
 
 // WAL transaction specified WAL message.
@@ -27,6 +33,7 @@ type WAL struct {
 	RelationStore map[int32]RelationData
 	Actions       []ActionData
 	pool          *sync.Pool
+	transformers  map[config.TransformationEngineType]transformerEngine
 }
 
 var errRelationNotFound = errors.New("relation not found")
@@ -41,6 +48,9 @@ func NewWAL(log *slog.Logger, pool *sync.Pool, monitor monitor) *WAL {
 		monitor:       monitor,
 		RelationStore: make(map[int32]RelationData),
 		Actions:       make([]ActionData, 0, aproxData),
+		transformers: map[config.TransformationEngineType]transformerEngine{
+			config.TransformationEngineTypeJS: transformer.NewJSPool(),
+		},
 	}
 }
 
@@ -115,7 +125,11 @@ func (w *WAL) CreateActionData(
 
 // CreateEventsWithFilter filter WAL message by table,
 // action and create events for each value.
-func (w *WAL) CreateEventsWithFilter(ctx context.Context, tableMap map[string][]string) <-chan *publisher.Event {
+func (w *WAL) CreateEventsWithFilter(
+	ctx context.Context,
+	tableMap map[string][]string,
+	transformationMap map[string]config.Transformation,
+) <-chan *publisher.Event {
 	output := make(chan *publisher.Event)
 
 	go func(ctx context.Context) {
@@ -135,6 +149,45 @@ func (w *WAL) CreateEventsWithFilter(ctx context.Context, tableMap map[string][]
 
 			for _, val := range item.NewColumns {
 				data[val.name] = val.value
+			}
+
+			var foundTransformation *config.Transformation
+			for tableName, transformation := range transformationMap {
+				if item.Table == tableName {
+					foundTransformation = &transformation
+				}
+			}
+
+			if foundTransformation != nil {
+				transformer, ok := w.transformers[foundTransformation.Type]
+				if ok {
+					transformedData, err := transformer.Transform(
+						foundTransformation.Script,
+						data,
+						dataOld,
+						item.Kind.string(),
+					)
+					if err != nil {
+						w.log.Error(
+							"wal-message error during data transformation",
+							slog.String("schema", item.Schema),
+							slog.String("table", item.Table),
+							slog.String("action", string(item.Kind)),
+							slog.String("error", err.Error()),
+						)
+						continue
+					}
+
+					data = transformedData
+				} else {
+					w.log.Debug(
+						"transformer could not found for wal-message",
+						slog.String("schema", item.Schema),
+						slog.String("table", item.Table),
+						slog.String("action", string(item.Kind)),
+						slog.String("transformer", string(foundTransformation.Type)),
+					)
+				}
 			}
 
 			event := w.getPoolEvent()

@@ -470,7 +470,11 @@ func TestListener_SendStandbyStatus(t *testing.T) {
 				},
 			},
 			wantErr: func(t require.TestingT, err error, i ...any) {
-				require.ErrorContains(t, err, "unable to send StandbyStatus object: replication err")
+				require.ErrorContains(
+					t,
+					err,
+					"unable to send StandbyStatus object: replication err",
+				)
 			},
 		},
 	}
@@ -578,7 +582,11 @@ func TestListener_AckWalMessage(t *testing.T) {
 				LSN: 24658872,
 			},
 			wantErr: func(t require.TestingT, err error, i ...any) {
-				require.ErrorContains(t, err, "send status: unable to send StandbyStatus object: some err")
+				require.ErrorContains(
+					t,
+					err,
+					"send status: unable to send StandbyStatus object: some err",
+				)
 			},
 		},
 	}
@@ -841,7 +849,9 @@ func TestListener_Process(t *testing.T) {
 				},
 				repo: func(t *testing.T) repository {
 					r := newMockrepository(t)
-					r.On("CreatePublication", mock.Anything, "wal-listener").Return(errors.New("some err")).Once()
+					r.On("CreatePublication", mock.Anything, "wal-listener").
+						Return(errors.New("some err")).
+						Once()
 					r.On("GetSlotLSN", mock.Anything, "slot1").Return("100/200", nil).Once()
 					r.On("IsReplicationActive", mock.Anything, "slot1").Return(false, nil).Once()
 					r.On("NewStandbyStatus", []uint64{1099511628288}).Return(
@@ -894,7 +904,9 @@ func TestListener_Process(t *testing.T) {
 				repo: func(t *testing.T) repository {
 					r := newMockrepository(t)
 					r.On("CreatePublication", mock.Anything, "wal-listener").Return(nil).Once()
-					r.On("GetSlotLSN", mock.Anything, "slot1").Return("", errors.New("some err")).Once()
+					r.On("GetSlotLSN", mock.Anything, "slot1").
+						Return("", errors.New("some err")).
+						Once()
 					return r
 				},
 			},
@@ -936,7 +948,9 @@ func TestListener_Process(t *testing.T) {
 						[]string{"proto_version '1'", "publication_names 'wal-listener'"},
 					).Return(nil).Once()
 					r.On("WaitForReplicationMessage", mock.Anything).Return(nil, nil)
-					r.On("CreateReplicationSlotEx", "slot1", "pgoutput").Return("100/200", "", nil).Once()
+					r.On("CreateReplicationSlotEx", "slot1", "pgoutput").
+						Return("100/200", "", nil).
+						Once()
 					r.On("Close").Return(nil).Once()
 
 					return r

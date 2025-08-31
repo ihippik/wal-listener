@@ -33,9 +33,16 @@ type parser interface {
 }
 
 type replication interface {
-	CreateReplicationSlotEx(slotName, outputPlugin string) (consistentPoint string, snapshotName string, err error)
+	CreateReplicationSlotEx(
+		slotName, outputPlugin string,
+	) (consistentPoint string, snapshotName string, err error)
 	DropReplicationSlot(slotName string) (err error)
-	StartReplication(slotName string, startLsn uint64, timeline int64, pluginArguments ...string) (err error)
+	StartReplication(
+		slotName string,
+		startLsn uint64,
+		timeline int64,
+		pluginArguments ...string,
+	) (err error)
 	WaitForReplicationMessage(ctx context.Context) (*pgx.ReplicationMessage, error)
 	SendStandbyStatus(k *pgx.StandbyStatus) (err error)
 	IsAlive() bool
@@ -345,7 +352,11 @@ func (l *Listener) Stream(ctx context.Context) error {
 	}
 }
 
-func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessage, txWAL *tx.WAL) error {
+func (l *Listener) processMessage(
+	ctx context.Context,
+	msg *pgx.ReplicationMessage,
+	txWAL *tx.WAL,
+) error {
 	if msg.WalMessage == nil {
 		l.log.Debug("empty wal-message")
 		return nil
@@ -359,7 +370,7 @@ func (l *Listener) processMessage(ctx context.Context, msg *pgx.ReplicationMessa
 	}
 
 	if txWAL.CommitTime != nil {
-		for event := range txWAL.CreateEventsWithFilter(ctx, l.cfg.Listener.Filter.Tables) {
+		for event := range txWAL.CreateEventsWithFilter(ctx, l.cfg.Listener.Filter.Tables, l.cfg.Listener.Transformations) {
 			subjectName := event.SubjectName(l.cfg)
 
 			if err := l.publisher.Publish(ctx, subjectName, event); err != nil {
