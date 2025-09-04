@@ -67,14 +67,14 @@ func (j *JS) transform(
 	data, oldData map[string]any,
 	action string,
 ) (map[string]any, error) {
+	j.runtime.Set("data", data)
+	j.runtime.Set("oldData", oldData)
+	j.runtime.Set("action", action)
+
 	wrappedScript := fmt.Sprintf(`
 			%s
-			
-			function __walSpecialTransform(data, oldData, action) {
-					const dataCopy = JSON.parse(JSON.stringify(data));
-					const oldDataCopy = JSON.parse(JSON.stringify(oldData));
-
-					return transform(dataCopy, oldDataCopy, action);
+			function __walSpecialTransform() {
+					return transform(data, oldData, action);
 			}
 	`, script)
 	_, err := j.runtime.RunString(wrappedScript)
@@ -87,11 +87,7 @@ func (j *JS) transform(
 		return nil, errors.New("transform function could not be found")
 	}
 
-	result, err := transform(
-		j.runtime.ToValue(data),
-		j.runtime.ToValue(oldData),
-		j.runtime.ToValue(action),
-	)
+	result, err := transform(nil)
 	if err != nil {
 		return nil, err
 	}
