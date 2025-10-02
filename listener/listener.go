@@ -48,6 +48,7 @@ type replication interface {
 type repository interface {
 	CreatePublication(ctx context.Context, name string) error
 	GetSlotLSN(ctx context.Context, slotName string) (*string, error)
+	GetSlotRetainedWALBytes(ctx context.Context, slotName string) (*int64, error)
 	IsAlive() bool
 	Close(ctx context.Context) error
 }
@@ -383,6 +384,21 @@ func (l *Listener) Stream(ctx context.Context) error {
 	})
 
 	group.Go(func() error {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				l.log.Warn("stream: context canceled", "err", ctx.Err())
+				return nil
+			case <-ticker.C:
+				l.logRetainedWalBytes(ctx)
+			}
+		}
+	})
+
+	group.Go(func() error {
 		for {
 			if err := ctx.Err(); err != nil {
 				l.log.Warn("stream: context canceled", "err", err)
@@ -675,6 +691,21 @@ func (l *Listener) AckWalMessage(ctx context.Context, lsn pglogrepl.LSN) error {
 	}
 
 	return nil
+}
+
+func (l *Listener) logRetainedWalBytes(ctx context.Context) {
+	retainedWalBytes, err := l.repository.GetSlotRetainedWALBytes(ctx, l.cfg.Listener.SlotName)
+	if err != nil || retainedWalBytes == nil {
+		l.log.Error("failed to get retained WAL bytes", "err", err, slog.String("slot_name", l.cfg.Listener.SlotName))
+		return
+	}
+
+	l.log.Info(
+		"slot retained WAL bytes",
+		slog.String("lsn", l.readLSN().String()),
+		slog.String("slot_name", l.cfg.Listener.SlotName),
+		slog.Int64("retained_wal_bytes", *retainedWalBytes),
+	)
 }
 
 func (l *Listener) readLSN() pglogrepl.LSN {
