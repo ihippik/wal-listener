@@ -28,6 +28,16 @@ func (r RepositoryImpl) GetSlotLSN(ctx context.Context, slotName string) (*strin
 	return restartLSNStr, err
 }
 
+// GetSlotRetainedWALBytes returns the retained bytes of the replication slot.
+func (r RepositoryImpl) GetSlotRetainedWALBytes(ctx context.Context, slotName string) (*int64, error) {
+	var retainedWALBytes *int64
+
+	err := r.conn.QueryRow(ctx, "SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn) AS retained_wal_bytes FROM pg_replication_slots WHERE slot_name=$1;", slotName).
+		Scan(&retainedWALBytes)
+
+	return retainedWALBytes, err
+}
+
 // CreatePublication create publication fo all.
 func (r RepositoryImpl) CreatePublication(ctx context.Context, name string) error {
 	if _, err := r.conn.Exec(ctx, `CREATE PUBLICATION "`+name+`" FOR ALL TABLES`); err != nil && !strings.Contains("already exists", err.Error()) {

@@ -3,6 +3,7 @@ package listener
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -614,6 +615,98 @@ func TestListener_Process(t *testing.T) {
 				} else {
 					assert.NoError(t, err)
 				}
+			}
+		})
+	}
+}
+
+func TestListener_logRetainedWalBytes(t *testing.T) {
+	repo := new(repositoryMock)
+
+	setGetSlotRetainedWALBytes := func(slotName string, bytes int64, err error) {
+		repo.On("GetSlotRetainedWALBytes", slotName).
+			Return(&bytes, err).
+			Once()
+	}
+
+	setGetSlotRetainedWALBytesNil := func(slotName string, err error) {
+		repo.On("GetSlotRetainedWALBytes", slotName).
+			Return((*int64)(nil), err).
+			Once()
+	}
+	tests := []struct {
+		name           string
+		setupMocks     func()
+		expectedLogMsg string
+		expectedLevel  string
+		expectedValue  string
+	}{
+		{
+			name: "successful log with retained WAL bytes",
+			setupMocks: func() {
+				setGetSlotRetainedWALBytes("test-slot", 1024000, nil)
+			},
+			expectedLogMsg: "slot retained WAL bytes",
+			expectedLevel:  "INFO",
+			expectedValue:  "1024000",
+		},
+		{
+			name: "error when query fails",
+			setupMocks: func() {
+				setGetSlotRetainedWALBytes("test-slot", 10, errors.New("database error"))
+			},
+			expectedLogMsg: "failed to get retained WAL bytes",
+			expectedLevel:  "ERROR",
+		},
+		{
+			name: "error when retained bytes is nil",
+			setupMocks: func() {
+				setGetSlotRetainedWALBytesNil("test-slot", nil)
+			},
+			expectedLogMsg: "failed to get retained WAL bytes",
+			expectedLevel:  "ERROR",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup
+			tt.setupMocks()
+
+			// Create a buffer to capture log output
+			var logBuffer strings.Builder
+			logger := slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{
+				Level: slog.LevelDebug,
+			}))
+
+			// Create listener with test configuration
+			listener := &Listener{
+				log: logger,
+				cfg: &config.Config{
+					Listener: &config.ListenerCfg{
+						SlotName: "test-slot",
+					},
+				},
+				repository: repo,
+				lsn:        pglogrepl.LSN(12345), // Set a test LSN
+			}
+
+			// Execute
+			ctx := context.Background()
+			listener.logRetainedWalBytes(ctx)
+
+			// Verify
+			repo.AssertExpectations(t)
+
+			// Check log output
+			logOutput := logBuffer.String()
+			assert.Contains(t, logOutput, tt.expectedLogMsg)
+			assert.Contains(t, logOutput, tt.expectedLevel)
+
+			// For successful case, verify specific fields
+			if tt.expectedValue != "" {
+				assert.Contains(t, logOutput, `"slot_name":"test-slot"`)
+				assert.Contains(t, logOutput, fmt.Sprintf(`"retained_wal_bytes":%s`, tt.expectedValue))
 			}
 		})
 	}

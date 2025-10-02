@@ -15,6 +15,11 @@ func (r *repositoryMock) GetSlotLSN(_ context.Context, slotName string) (*string
 	return args.Get(0).(*string), args.Error(1)
 }
 
+func (r *repositoryMock) GetSlotRetainedWALBytes(_ context.Context, slotName string) (*int64, error) {
+	args := r.Called(slotName)
+	return args.Get(0).(*int64), args.Error(1)
+}
+
 func (r *repositoryMock) IsAlive() bool {
 	return r.Called().Bool(0)
 }
