@@ -7,7 +7,8 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  unit-test:
+    name: Unit Tests
     runs-on: ubuntu-latest
     
     steps:
@@ -29,8 +30,67 @@ jobs:
     - name: Download dependencies
       run: go mod download
     
-    - name: Run tests
+    - name: Run unit tests
       run: go test -v ./...
     
-    - name: Run tests with race detection
+    - name: Run unit tests with race detection
       run: go test -race -v ./...
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.22.3'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Start PostgreSQL with logical replication
+      run: |
+        docker run -d \
+          --name postgres-test \
+          -e POSTGRES_USER=postgres \
+          -e POSTGRES_PASSWORD=postgres \
+          -e POSTGRES_DB=postgres \
+          -p 5432:5432 \
+          postgres:17 \
+          -c wal_level=logical \
+          -c max_wal_senders=10 \
+          -c max_replication_slots=10
+
+    - name: Wait for PostgreSQL to be ready
+      run: |
+        for i in {1..30}; do
+          docker exec postgres-test pg_isready -U postgres && break
+          echo "Waiting for PostgreSQL..."
+          sleep 2
+        done
+
+    - name: Verify PostgreSQL configuration
+      run: |
+        docker exec postgres-test psql -U postgres -c "SHOW wal_level;"
+        docker exec postgres-test psql -U postgres -c "SHOW max_replication_slots;"
+        docker exec postgres-test psql -U postgres -c "SHOW max_wal_senders;"
+    
+    - name: Run integration tests
+      env:
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5432
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: postgres
+      run: go test -v -tags=integration -timeout=300s ./listener/...
