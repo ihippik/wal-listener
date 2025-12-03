@@ -70,6 +70,41 @@ func getTestConfig() testConfig {
 	}
 }
 
+// getDownstreamTestConfig returns config for the downstream PostgreSQL instance
+// used for testing foreign origin filtering with logical replication chains
+func getDownstreamTestConfig() testConfig {
+	host := os.Getenv("POSTGRES_DOWNSTREAM_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+	port := os.Getenv("POSTGRES_DOWNSTREAM_PORT")
+	if port == "" {
+		port = "5433"
+	}
+	var portNum uint16 = 5433
+	fmt.Sscanf(port, "%d", &portNum)
+
+	database := os.Getenv("POSTGRES_DB")
+	if database == "" {
+		database = "postgres"
+	}
+	user := os.Getenv("POSTGRES_USER")
+	if user == "" {
+		user = "postgres"
+	}
+	password := os.Getenv("POSTGRES_PASSWORD")
+	if password == "" {
+		password = "postgres"
+	}
+	return testConfig{
+		Host:     host,
+		Port:     portNum,
+		Database: database,
+		User:     user,
+		Password: password,
+	}
+}
+
 // testPublisher collects published events for verification
 type testPublisher struct {
 	mu     sync.Mutex
@@ -228,6 +263,7 @@ func (h *testHelper) createTestTable(ctx context.Context, tableName string) {
 type listenerOptions struct {
 	maxTransactionSize       int
 	skipTransactionBuffering bool
+	dropForeignOrigin        bool
 }
 
 func (h *testHelper) createListener(ctx context.Context, slotName string, pub *testPublisher) *Listener {
@@ -242,6 +278,7 @@ func (h *testHelper) createListenerWithOptions(ctx context.Context, slotName str
 			HeartbeatInterval:        5 * time.Second,
 			MaxTransactionSize:       opts.maxTransactionSize,
 			SkipTransactionBuffering: opts.skipTransactionBuffering,
+			DropForeignOrigin:        opts.dropForeignOrigin,
 		},
 		Database: &config.DatabaseCfg{
 			Host:     h.cfg.Host,
@@ -1136,4 +1173,352 @@ func TestIntegration_LargeTransactionNoLimit(t *testing.T) {
 	// Without maxTransactionSize, we should get ALL events
 	assert.Equal(t, totalInserts, insertCount,
 		"expected all %d INSERT events without maxTransactionSize, but got %d", totalInserts, insertCount)
+}
+
+// foreignOriginTestHelper manages two PostgreSQL instances for testing foreign origin filtering
+type foreignOriginTestHelper struct {
+	t              *testing.T
+	primaryCfg     testConfig
+	downstreamCfg  testConfig
+	primaryConn    *pgx.Conn
+	downstreamConn *pgx.Conn
+	replConn       *pgconn.PgConn
+	logger         *slog.Logger
+}
+
+func newForeignOriginTestHelper(t *testing.T) *foreignOriginTestHelper {
+	primaryCfg := getTestConfig()
+	downstreamCfg := getDownstreamTestConfig()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if os.Getenv("DEBUG") != "" {
+		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	}
+	return &foreignOriginTestHelper{
+		t:             t,
+		primaryCfg:    primaryCfg,
+		downstreamCfg: downstreamCfg,
+		logger:        logger,
+	}
+}
+
+func (h *foreignOriginTestHelper) connect(ctx context.Context) {
+	// Connect to primary
+	primaryConnStr := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+		h.primaryCfg.User, h.primaryCfg.Password, h.primaryCfg.Host, h.primaryCfg.Port, h.primaryCfg.Database)
+	var err error
+	h.primaryConn, err = pgx.Connect(ctx, primaryConnStr)
+	require.NoError(h.t, err, "failed to connect to primary database")
+
+	// Connect to downstream (regular connection)
+	downstreamConnStr := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+		h.downstreamCfg.User, h.downstreamCfg.Password, h.downstreamCfg.Host, h.downstreamCfg.Port, h.downstreamCfg.Database)
+	h.downstreamConn, err = pgx.Connect(ctx, downstreamConnStr)
+	require.NoError(h.t, err, "failed to connect to downstream database")
+
+	// Replication connection to downstream
+	replConnStr := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable&replication=database",
+		h.downstreamCfg.User, h.downstreamCfg.Password, h.downstreamCfg.Host, h.downstreamCfg.Port, h.downstreamCfg.Database)
+	replPgConnConf, err := pgconn.ParseConfig(replConnStr)
+	require.NoError(h.t, err, "failed to parse replication connection string")
+	h.replConn, err = pgconn.ConnectConfig(ctx, replPgConnConf)
+	require.NoError(h.t, err, "failed to connect replication connection to downstream")
+}
+
+func (h *foreignOriginTestHelper) close(ctx context.Context) {
+	if h.primaryConn != nil {
+		h.primaryConn.Close(ctx)
+	}
+	if h.downstreamConn != nil {
+		h.downstreamConn.Close(ctx)
+	}
+	if h.replConn != nil {
+		h.replConn.Close(ctx)
+	}
+}
+
+func (h *foreignOriginTestHelper) cleanup(ctx context.Context, slotName, subscriptionName, publicationName, tableName string) {
+	// Clean up downstream: subscription first, then slot
+	if subscriptionName != "" {
+		_, _ = h.downstreamConn.Exec(ctx, fmt.Sprintf("ALTER SUBSCRIPTION %s DISABLE", subscriptionName))
+		_, _ = h.downstreamConn.Exec(ctx, fmt.Sprintf("ALTER SUBSCRIPTION %s SET (slot_name = NONE)", subscriptionName))
+		_, _ = h.downstreamConn.Exec(ctx, fmt.Sprintf("DROP SUBSCRIPTION IF EXISTS %s", subscriptionName))
+	}
+
+	// Drop wal-listener slot on downstream
+	if slotName != "" {
+		_, _ = h.downstreamConn.Exec(ctx, fmt.Sprintf("SELECT pg_drop_replication_slot('%s') FROM pg_replication_slots WHERE slot_name = '%s'", slotName, slotName))
+	}
+
+	// Drop publication on downstream
+	_, _ = h.downstreamConn.Exec(ctx, fmt.Sprintf(`DROP PUBLICATION IF EXISTS "%s"`, testPublicationName))
+
+	// Clean up primary: publication and slot
+	if publicationName != "" {
+		_, _ = h.primaryConn.Exec(ctx, fmt.Sprintf("DROP PUBLICATION IF EXISTS %s", publicationName))
+	}
+
+	// Drop table on both
+	if tableName != "" {
+		_, _ = h.primaryConn.Exec(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", tableName))
+		_, _ = h.downstreamConn.Exec(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s CASCADE", tableName))
+	}
+}
+
+func (h *foreignOriginTestHelper) setupReplication(ctx context.Context, tableName, publicationName, subscriptionName string) {
+	// Create table on primary
+	_, err := h.primaryConn.Exec(ctx, fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255),
+			source VARCHAR(50)
+		)
+	`, tableName))
+	require.NoError(h.t, err, "failed to create table on primary")
+
+	// Set REPLICA IDENTITY FULL on primary
+	_, err = h.primaryConn.Exec(ctx, fmt.Sprintf("ALTER TABLE %s REPLICA IDENTITY FULL", tableName))
+	require.NoError(h.t, err, "failed to set replica identity on primary")
+
+	// Create publication on primary
+	_, err = h.primaryConn.Exec(ctx, fmt.Sprintf("CREATE PUBLICATION %s FOR TABLE %s", publicationName, tableName))
+	require.NoError(h.t, err, "failed to create publication on primary")
+
+	// Create the same table on downstream
+	_, err = h.downstreamConn.Exec(ctx, fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255),
+			source VARCHAR(50)
+		)
+	`, tableName))
+	require.NoError(h.t, err, "failed to create table on downstream")
+
+	// Set REPLICA IDENTITY FULL on downstream
+	_, err = h.downstreamConn.Exec(ctx, fmt.Sprintf("ALTER TABLE %s REPLICA IDENTITY FULL", tableName))
+	require.NoError(h.t, err, "failed to set replica identity on downstream")
+
+	// Create subscription on downstream to primary
+	// The subscription runs inside the downstream container, so it needs the internal hostname
+	// to reach the primary container (e.g., docker container name or docker-compose service name)
+	primaryHostInternal := os.Getenv("POSTGRES_PRIMARY_HOST_INTERNAL")
+	if primaryHostInternal == "" {
+		primaryHostInternal = h.primaryCfg.Host // fallback for local testing without docker
+	}
+	primaryPortInternal := os.Getenv("POSTGRES_PRIMARY_PORT_INTERNAL")
+	if primaryPortInternal == "" {
+		primaryPortInternal = fmt.Sprintf("%d", h.primaryCfg.Port)
+	}
+
+	subscriptionConnStr := fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s",
+		primaryHostInternal, primaryPortInternal, h.primaryCfg.Database, h.primaryCfg.User, h.primaryCfg.Password)
+
+	_, err = h.downstreamConn.Exec(ctx, fmt.Sprintf(
+		"CREATE SUBSCRIPTION %s CONNECTION '%s' PUBLICATION %s",
+		subscriptionName, subscriptionConnStr, publicationName))
+	require.NoError(h.t, err, "failed to create subscription on downstream")
+
+	// Wait for subscription to be ready
+	time.Sleep(2 * time.Second)
+}
+
+func (h *foreignOriginTestHelper) createListener(ctx context.Context, slotName string, pub *testPublisher, dropForeignOrigin bool) *Listener {
+	cfg := &config.Config{
+		Listener: &config.ListenerCfg{
+			SlotName:          slotName,
+			RefreshConnection: 5 * time.Second,
+			HeartbeatInterval: 5 * time.Second,
+			DropForeignOrigin: dropForeignOrigin,
+		},
+		Database: &config.DatabaseCfg{
+			Host:     h.downstreamCfg.Host,
+			Port:     h.downstreamCfg.Port,
+			Name:     h.downstreamCfg.Database,
+			User:     h.downstreamCfg.User,
+			Password: h.downstreamCfg.Password,
+		},
+		Publisher: &config.PublisherCfg{
+			Type:  config.PublisherTypeStdout,
+			Topic: "test",
+		},
+	}
+
+	repo := NewRepository(h.downstreamConn)
+	repl := NewReplicationWrapper(h.replConn, h.logger)
+	parser := NewBinaryParser(h.logger, binary.BigEndian)
+	monitor := &testMonitor{}
+
+	return NewWalListener(cfg, h.logger, repo, repl, pub, parser, monitor)
+}
+
+// TestIntegration_DropForeignOrigin tests that transactions from upstream databases
+// are dropped when dropForeignOrigin is enabled
+func TestIntegration_DropForeignOrigin(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	helper := newForeignOriginTestHelper(t)
+	helper.connect(ctx)
+	defer helper.close(ctx)
+
+	slotName := testSlotName + "_foreignorigin"
+	tableName := "test_foreign_" + fmt.Sprintf("%d", time.Now().UnixNano())
+	publicationName := "test_pub_" + fmt.Sprintf("%d", time.Now().UnixNano())
+	subscriptionName := "test_sub_" + fmt.Sprintf("%d", time.Now().UnixNano())
+
+	// Cleanup before and after
+	helper.cleanup(ctx, slotName, subscriptionName, publicationName, tableName)
+	defer helper.cleanup(ctx, slotName, subscriptionName, publicationName, tableName)
+
+	// Setup logical replication chain: primary -> downstream
+	helper.setupReplication(ctx, tableName, publicationName, subscriptionName)
+
+	pub := newTestPublisher()
+
+	// Create listener on downstream with dropForeignOrigin = true
+	listener := helper.createListener(ctx, slotName, pub, true)
+
+	listenerCtx, listenerCancel := context.WithCancel(ctx)
+	listenerDone := make(chan error, 1)
+	go func() {
+		listenerDone <- listener.Process(listenerCtx)
+	}()
+
+	time.Sleep(3 * time.Second)
+
+	// Insert data on PRIMARY - this will be replicated to downstream with foreign origin
+	// Use explicit ID to avoid conflicts with downstream inserts
+	_, err := helper.primaryConn.Exec(ctx, fmt.Sprintf(
+		`INSERT INTO %s (id, name, source) VALUES (1000, 'from_primary', 'primary')`, tableName))
+	require.NoError(t, err)
+
+	// Wait for replication to downstream
+	time.Sleep(3 * time.Second)
+
+	// Insert data directly on DOWNSTREAM - this has no foreign origin
+	// Use explicit ID in a different range to avoid conflicts with replicated data
+	downstreamDataConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+		helper.downstreamCfg.User, helper.downstreamCfg.Password, helper.downstreamCfg.Host,
+		helper.downstreamCfg.Port, helper.downstreamCfg.Database))
+	require.NoError(t, err)
+	defer downstreamDataConn.Close(ctx)
+
+	_, err = downstreamDataConn.Exec(ctx, fmt.Sprintf(
+		`INSERT INTO %s (id, name, source) VALUES (2000, 'from_downstream', 'downstream')`, tableName))
+	require.NoError(t, err)
+
+	// Wait for the local event to be processed
+	// The foreign origin event should be dropped, so we expect only 1 event from downstream
+	// Give enough time for the transaction to be fully committed and replicated
+	time.Sleep(8 * time.Second)
+	events := pub.GetEvents()
+
+	listenerCancel()
+	<-listenerDone
+
+	// Count events by source
+	var fromPrimary, fromDownstream int
+	for _, e := range events {
+		if e.Table == tableName && e.Action == "INSERT" {
+			if source, ok := e.Data["source"].(string); ok {
+				if source == "primary" {
+					fromPrimary++
+				} else if source == "downstream" {
+					fromDownstream++
+				}
+			}
+		}
+	}
+
+	// With dropForeignOrigin=true, we should only see downstream events (no foreign origin)
+	assert.Equal(t, 0, fromPrimary, "expected 0 events from primary (foreign origin should be dropped)")
+	assert.Equal(t, 1, fromDownstream, "expected 1 event from downstream (local origin)")
+}
+
+// TestIntegration_KeepForeignOrigin tests that transactions from upstream databases
+// are kept when dropForeignOrigin is disabled (default behavior)
+func TestIntegration_KeepForeignOrigin(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	helper := newForeignOriginTestHelper(t)
+	helper.connect(ctx)
+	defer helper.close(ctx)
+
+	slotName := testSlotName + "_keeporigin"
+	tableName := "test_keeporigin_" + fmt.Sprintf("%d", time.Now().UnixNano())
+	publicationName := "test_pub_keep_" + fmt.Sprintf("%d", time.Now().UnixNano())
+	subscriptionName := "test_sub_keep_" + fmt.Sprintf("%d", time.Now().UnixNano())
+
+	// Cleanup before and after
+	helper.cleanup(ctx, slotName, subscriptionName, publicationName, tableName)
+	defer helper.cleanup(ctx, slotName, subscriptionName, publicationName, tableName)
+
+	// Setup logical replication chain: primary -> downstream
+	helper.setupReplication(ctx, tableName, publicationName, subscriptionName)
+
+	pub := newTestPublisher()
+
+	// Create listener on downstream with dropForeignOrigin = false (keep all)
+	listener := helper.createListener(ctx, slotName, pub, false)
+
+	listenerCtx, listenerCancel := context.WithCancel(ctx)
+	listenerDone := make(chan error, 1)
+	go func() {
+		listenerDone <- listener.Process(listenerCtx)
+	}()
+
+	time.Sleep(3 * time.Second)
+
+	// Insert data on PRIMARY - this will be replicated to downstream with foreign origin
+	// Use explicit ID to avoid conflicts with downstream inserts
+	_, err := helper.primaryConn.Exec(ctx, fmt.Sprintf(
+		`INSERT INTO %s (id, name, source) VALUES (1000, 'from_primary', 'primary')`, tableName))
+	require.NoError(t, err)
+
+	// Wait for replication to downstream
+	time.Sleep(3 * time.Second)
+
+	// Insert data directly on DOWNSTREAM - this has no foreign origin
+	// Use explicit ID in a different range to avoid conflicts with replicated data
+	downstreamDataConn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+		helper.downstreamCfg.User, helper.downstreamCfg.Password, helper.downstreamCfg.Host,
+		helper.downstreamCfg.Port, helper.downstreamCfg.Database))
+	require.NoError(t, err)
+	defer downstreamDataConn.Close(ctx)
+
+	_, err = downstreamDataConn.Exec(ctx, fmt.Sprintf(
+		`INSERT INTO %s (id, name, source) VALUES (2000, 'from_downstream', 'downstream')`, tableName))
+	require.NoError(t, err)
+
+	// Wait for events - expect both events
+	events := pub.WaitForEvents(2, 15*time.Second)
+
+	listenerCancel()
+	<-listenerDone
+
+	// Count events by source
+	var fromPrimary, fromDownstream int
+	for _, e := range events {
+		if e.Table == tableName && e.Action == "INSERT" {
+			if source, ok := e.Data["source"].(string); ok {
+				if source == "primary" {
+					fromPrimary++
+				} else if source == "downstream" {
+					fromDownstream++
+				}
+			}
+		}
+	}
+
+	// With dropForeignOrigin=false, we should see both events
+	assert.Equal(t, 1, fromPrimary, "expected 1 event from primary (foreign origin kept)")
+	assert.Equal(t, 1, fromDownstream, "expected 1 event from downstream (local origin)")
 }

@@ -61,14 +61,11 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		tx.CommitTime = &commit.Timestamp
 		tx.LogDroppedActions()
 	case OriginMsgType:
+		// Origin messages are received when a transaction originated from a different replication origin (e.g., another subscriber). When dropForeignOrigin is enabled, PostgreSQL's pgoutput plugin filters these at the source using origin='none', so we don't do any filtering client side here.
 		origin := p.getOriginMsg()
 		p.log.Debug("origin type message was received", slog.String("origin", origin))
-		tx.SetOrigin(origin, tx.dropForeignOrigin)
 	case RelationMsgType:
-		if tx.ShouldDropMessage() {
-			p.log.Debug("dropping relation message due to foreign origin", slog.String("origin", tx.origin))
-			return nil
-		}
+		// Always process relation messages - we need the schema info even for foreign origin transactions because future local transactions may use the same tables
 		relation := p.getRelationMsg()
 
 		p.log.Debug(
@@ -98,16 +95,9 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 
 		tx.RelationStore[relation.ID] = rd
 	case TypeMsgType:
-		if tx.ShouldDropMessage() {
-			p.log.Debug("dropping type message due to foreign origin", slog.String("origin", tx.origin))
-			return nil
-		}
+		// Always process type messages for schema info
 		p.log.Debug("type message was received")
 	case InsertMsgType:
-		if tx.ShouldDropMessage() {
-			p.log.Debug("dropping insert message due to foreign origin", slog.String("origin", tx.origin))
-			return nil
-		}
 		insert := p.getInsertMsg()
 
 		p.log.Debug(
@@ -132,10 +122,6 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		tx.Actions = append(tx.Actions, action)
 		tx.emittedActionCount++
 	case UpdateMsgType:
-		if tx.ShouldDropMessage() {
-			p.log.Debug("dropping update message due to foreign origin", slog.String("origin", tx.origin))
-			return nil
-		}
 		upd := p.getUpdateMsg()
 
 		p.log.Debug("update type message was received", slog.Any("relation_id", upd.RelationID))
@@ -157,10 +143,6 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		tx.Actions = append(tx.Actions, action)
 		tx.emittedActionCount++
 	case DeleteMsgType:
-		if tx.ShouldDropMessage() {
-			p.log.Debug("dropping delete message due to foreign origin", slog.String("origin", tx.origin))
-			return nil
-		}
 		del := p.getDeleteMsg()
 
 		p.log.Debug(
@@ -185,10 +167,6 @@ func (p *BinaryParser) ParseWalMessage(msg []byte, tx *WalTransaction) error {
 		tx.Actions = append(tx.Actions, action)
 		tx.emittedActionCount++
 	case TruncateMsgType:
-		if tx.ShouldDropMessage() {
-			p.log.Debug("dropping truncate message due to foreign origin", slog.String("origin", tx.origin))
-			return nil
-		}
 		truncateMessages := p.getTruncateMessages()
 		p.log.Debug("truncate type message was received")
 
@@ -287,6 +265,10 @@ func (p *BinaryParser) getRelationMsg() Relation {
 }
 
 func (p *BinaryParser) getOriginMsg() string {
+	// Origin message format:
+	// Int64 - LSN of the commit on the origin server
+	// String - Name of the origin
+	_ = p.readInt64() // Skip the LSN, we only need the name
 	return p.readString()
 }
 

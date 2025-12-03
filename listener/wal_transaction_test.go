@@ -430,192 +430,61 @@ func TestColumn_AssertValue(t *testing.T) {
 	}
 }
 
-func TestWalTransaction_OriginTracking(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-
-	tests := []struct {
-		name              string
-		dropForeignOrigin bool
-		origin            string
-		wantShouldDrop    bool
-	}{
-		{
-			name:              "drop disabled - no origin",
-			dropForeignOrigin: false,
-			origin:            "",
-			wantShouldDrop:    false,
-		},
-		{
-			name:              "drop disabled - with origin",
-			dropForeignOrigin: false,
-			origin:            "origin_1",
-			wantShouldDrop:    false,
-		},
-		{
-			name:              "drop enabled - no origin",
-			dropForeignOrigin: true,
-			origin:            "",
-			wantShouldDrop:    false,
-		},
-		{
-			name:              "drop enabled - with origin",
-			dropForeignOrigin: true,
-			origin:            "origin_1",
-			wantShouldDrop:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, tt.dropForeignOrigin, 0)
-
-			if tt.origin != "" {
-				tx.SetOrigin(tt.origin, tt.dropForeignOrigin)
-			}
-
-			if got := tx.ShouldDropMessage(); got != tt.wantShouldDrop {
-				t.Errorf("ShouldDropMessage() = %v, want %v", got, tt.wantShouldDrop)
-			}
-
-			if tx.origin != tt.origin {
-				t.Errorf("Origin = %v, want %v", tx.origin, tt.origin)
-			}
-		})
-	}
-}
 
 func TestWalTransaction_Clear(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	now := time.Now()
 
-	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, true, 0)
+	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, 0)
 
 	// Set up transaction state
 	tx.LSN = 123
 	tx.BeginTime = &now
 	tx.CommitTime = &now
 	tx.Actions = []ActionData{{Schema: "test", Table: "table", Kind: ActionKindInsert}}
-	tx.SetOrigin("origin_1", true)
 
 	// Verify state is set
 	assert.Equal(t, int64(123), tx.LSN)
 	assert.Equal(t, &now, tx.BeginTime)
 	assert.Equal(t, &now, tx.CommitTime)
 	assert.Equal(t, 1, len(tx.Actions))
-	assert.Equal(t, "origin_1", tx.origin)
-	assert.Equal(t, true, tx.ShouldDropMessage())
 
 	// Clear transaction
 	tx.Clear()
 
-	// Verify everything is cleared including origin
+	// Verify everything is cleared
 	assert.Equal(t, int64(123), tx.LSN) // LSN should remain
 	assert.Equal(t, (*time.Time)(nil), tx.BeginTime)
 	assert.Equal(t, (*time.Time)(nil), tx.CommitTime)
 	assert.Equal(t, ([]ActionData)(nil), tx.Actions)
-	assert.Equal(t, "", tx.origin)
-	assert.Equal(t, false, tx.ShouldDropMessage())
 }
 
 func TestWalTransaction_ClearActions(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	now := time.Now()
 
-	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, true, 0)
+	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, 0)
 
 	// Set up transaction state
 	tx.LSN = 123
 	tx.BeginTime = &now
 	tx.CommitTime = &now
 	tx.Actions = []ActionData{{Schema: "test", Table: "table", Kind: ActionKindInsert}}
-	tx.SetOrigin("origin_1", true)
 
 	// Verify state is set
 	assert.Equal(t, int64(123), tx.LSN)
 	assert.Equal(t, &now, tx.BeginTime)
 	assert.Equal(t, &now, tx.CommitTime)
 	assert.Equal(t, 1, len(tx.Actions))
-	assert.Equal(t, "origin_1", tx.origin)
-	assert.Equal(t, true, tx.ShouldDropMessage())
 
 	// Clear only actions
 	tx.ClearActions()
 
-	// Verify only actions are cleared, origin and other state preserved
+	// Verify only actions are cleared, other state preserved
 	assert.Equal(t, int64(123), tx.LSN)
 	assert.Equal(t, &now, tx.BeginTime)
 	assert.Equal(t, &now, tx.CommitTime)
 	assert.Equal(t, ([]ActionData)(nil), tx.Actions)
-	assert.Equal(t, "origin_1", tx.origin)        // Origin should be preserved
-	assert.Equal(t, true, tx.ShouldDropMessage()) // Should still drop
-}
-
-func TestWalTransaction_SetOrigin(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-
-	tests := []struct {
-		name              string
-		initialOrigin     string
-		newOrigin         string
-		dropForeignOrigin bool
-		wantOrigin        string
-		wantShouldDrop    bool
-	}{
-		{
-			name:              "set origin with drop enabled",
-			initialOrigin:     "",
-			newOrigin:         "origin_1",
-			dropForeignOrigin: true,
-			wantOrigin:        "origin_1",
-			wantShouldDrop:    true,
-		},
-		{
-			name:              "set origin with drop disabled",
-			initialOrigin:     "",
-			newOrigin:         "origin_1",
-			dropForeignOrigin: false,
-			wantOrigin:        "origin_1",
-			wantShouldDrop:    false,
-		},
-		{
-			name:              "override existing origin",
-			initialOrigin:     "origin_1",
-			newOrigin:         "origin_2",
-			dropForeignOrigin: true,
-			wantOrigin:        "origin_2",
-			wantShouldDrop:    true,
-		},
-		{
-			name:              "clear origin",
-			initialOrigin:     "origin_1",
-			newOrigin:         "",
-			dropForeignOrigin: true,
-			wantOrigin:        "",
-			wantShouldDrop:    false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, tt.dropForeignOrigin, 0)
-
-			// Set initial origin if provided
-			if tt.initialOrigin != "" {
-				tx.SetOrigin(tt.initialOrigin, tt.dropForeignOrigin)
-			}
-
-			// Set new origin
-			tx.SetOrigin(tt.newOrigin, tt.dropForeignOrigin)
-
-			if tx.origin != tt.wantOrigin {
-				t.Errorf("Origin = %v, want %v", tx.origin, tt.wantOrigin)
-			}
-
-			if got := tx.ShouldDropMessage(); got != tt.wantShouldDrop {
-				t.Errorf("ShouldDropMessage() = %v, want %v", got, tt.wantShouldDrop)
-			}
-		})
-	}
 }
 
 func TestWalTransaction_ActionCountLimiting(t *testing.T) {
@@ -660,7 +529,7 @@ func TestWalTransaction_ActionCountLimiting(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, false, tt.maxSize)
+			tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, tt.maxSize)
 
 			for i := 0; i < tt.actionCount; i++ {
 				if tt.maxSize > 0 && tx.emittedActionCount >= tt.maxSize {
@@ -680,7 +549,7 @@ func TestWalTransaction_ActionCountLimiting(t *testing.T) {
 func TestWalTransaction_ClearResetsActionCount(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, false, 10)
+	tx := NewWalTransaction(logger, nil, nil, nil, config.ExcludeStruct{}, map[string]string{}, 10)
 	tx.emittedActionCount = 5
 	tx.droppedActionCount = 2
 	tx.Actions = []ActionData{{Schema: "test", Table: "table", Kind: ActionKindInsert}}
@@ -696,7 +565,7 @@ func TestWalTransaction_MaxTransactionSize(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	metrics := new(monitorMock)
 
-	tx := NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{}, false, 2)
+	tx := NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{}, 2)
 
 	// Add first action - should be accepted
 	action1 := ActionData{Schema: "public", Table: "users", Kind: ActionKindInsert}
@@ -716,7 +585,7 @@ func TestWalTransaction_MaxTransactionSizeInSkipBufferingMode(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	metrics := new(monitorMock)
 
-	tx := NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{}, false, 2)
+	tx := NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{}, 2)
 
 	// Add first action - should be accepted
 	action1 := ActionData{Schema: "public", Table: "users", Kind: ActionKindInsert}
