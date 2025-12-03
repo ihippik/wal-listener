@@ -325,13 +325,25 @@ const (
 func (l *Listener) Stream(ctx context.Context) error {
 	currentLSN := l.readLSN()
 	l.log.Info("Starting replication", slog.String("lsn", currentLSN.String()), slog.Uint64("lsn_uint64", uint64(currentLSN)))
+
+	// Build plugin arguments for pgoutput
+	pluginArgs := []string{
+		protoVersion,
+		publicationNames(publicationName),
+	}
+
+	// When dropForeignOrigin is enabled, use PostgreSQL's built-in origin filtering
+	// by setting origin='none' on the pgoutput plugin. This tells PostgreSQL to only
+	// stream changes that originated locally (no foreign origin).
+	// Requires PostgreSQL 16+.
+	if l.cfg.Listener.DropForeignOrigin {
+		pluginArgs = append(pluginArgs, "origin 'none'")
+	}
+
 	if err := l.replicator.StartReplication(
 		l.cfg.Listener.SlotName,
 		currentLSN,
-		protoVersion,
-		publicationNames(publicationName),
-		//"messages 'true'", todo: only in pg 15
-		//"streaming 'true'",
+		pluginArgs...,
 	); err != nil {
 		return fmt.Errorf("start replication: %w", err)
 	}
@@ -351,7 +363,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 		}
 	}()
 
-	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude, l.cfg.Tags, l.cfg.Listener.DropForeignOrigin, l.cfg.Listener.MaxTransactionSize)
+	tx := NewWalTransaction(l.log, pool, l.monitor, l.cfg.Listener.Include.Tables, l.cfg.Listener.Exclude, l.cfg.Tags, l.cfg.Listener.MaxTransactionSize)
 
 	group, ctx := errgroup.WithContext(ctx)
 	messageChan := make(chan *pgproto3.CopyData, 20_000)

@@ -471,17 +471,21 @@ func TestBinaryParser_getOriginMsg(t *testing.T) {
 		{
 			name: "parse origin message",
 			fields: fields{
+				// Int64 LSN (8 bytes) + origin_1 string + null terminator
+				// 0,0,0,0,0,0,0,7 = 7 (int64 LSN)
 				// 111, 114, 105, 103, 105, 110, 95, 49 = origin_1 (text)
 				// 0 = end of string
-				src: []byte{111, 114, 105, 103, 105, 110, 95, 49, 0},
+				src: []byte{0, 0, 0, 0, 0, 0, 0, 7, 111, 114, 105, 103, 105, 110, 95, 49, 0},
 			},
 			want: "origin_1",
 		},
 		{
 			name: "parse empty origin",
 			fields: fields{
+				// Int64 LSN (8 bytes) + empty string
+				// 0,0,0,0,0,0,0,7 = 7 (int64 LSN)
 				// 0 = end of string (empty origin)
-				src: []byte{0},
+				src: []byte{0, 0, 0, 0, 0, 0, 0, 7, 0},
 			},
 			want: "",
 		},
@@ -535,7 +539,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				tx: NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{
 					"environment": "test",
 					"service":     "wal-listener",
-				}, false, 0),
+				}, 0),
 			},
 			want: &WalTransaction{
 				pool:          nil,
@@ -988,113 +992,3 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 	}
 }
 
-func TestBinaryParser_ParseWalMessage_DropForeignOrigin(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	metrics := new(monitorMock)
-
-	tests := []struct {
-		name              string
-		dropForeignOrigin bool
-		messages          [][]byte
-		wantActionsCount  int
-		wantOrigin        string
-		wantErr           bool
-	}{
-		{
-			name:              "origin message - drop disabled",
-			dropForeignOrigin: false,
-			messages: [][]byte{
-				// Origin message: OriginMsgType + "origin_1\0"
-				{byte(OriginMsgType), 111, 114, 105, 103, 105, 110, 95, 49, 0},
-				// Insert message: InsertMsgType + relation_id + N + tuple_data
-				{
-					byte(InsertMsgType),
-					0, 0, 0, 1, // relation id
-					78,   // N flag
-					0, 1, // 1 column
-					116,        // text type
-					0, 0, 0, 4, // 4 bytes
-					116, 101, 115, 116, // "test"
-				},
-			},
-			wantActionsCount: 1,
-			wantOrigin:       "origin_1",
-			wantErr:          false,
-		},
-		{
-			name:              "origin message - drop enabled with foreign origin",
-			dropForeignOrigin: true,
-			messages: [][]byte{
-				// Origin message: OriginMsgType + "origin_1\0"
-				{byte(OriginMsgType), 111, 114, 105, 103, 105, 110, 95, 49, 0},
-				// Insert message should be dropped
-				{
-					byte(InsertMsgType),
-					0, 0, 0, 1, // relation id
-					78,   // N flag
-					0, 1, // 1 column
-					116,        // text type
-					0, 0, 0, 4, // 4 bytes
-					116, 101, 115, 116, // "test"
-				},
-			},
-			wantActionsCount: 0, // Actions should be empty because message was dropped
-			wantOrigin:       "origin_1",
-			wantErr:          false,
-		},
-		{
-			name:              "no origin message - drop enabled",
-			dropForeignOrigin: true,
-			messages: [][]byte{
-				// Insert message without origin should pass through
-				{
-					byte(InsertMsgType),
-					0, 0, 0, 1, // relation id
-					78,   // N flag
-					0, 1, // 1 column
-					116,        // text type
-					0, 0, 0, 4, // 4 bytes
-					116, 101, 115, 116, // "test"
-				},
-			},
-			wantActionsCount: 1, // Should pass through when no origin set
-			wantOrigin:       "",
-			wantErr:          false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tx := NewWalTransaction(logger, nil, metrics, nil, config.ExcludeStruct{}, map[string]string{}, tt.dropForeignOrigin, 0)
-			// Add a dummy relation to prevent relation not found errors
-			tx.RelationStore[1] = RelationData{
-				Schema: "public",
-				Table:  "test_table",
-				Columns: []Column{
-					{
-						log:       logger,
-						name:      "name",
-						valueType: TextOID,
-					},
-				},
-			}
-
-			parser := NewBinaryParser(logger, binary.BigEndian)
-
-			for _, msg := range tt.messages {
-				err := parser.ParseWalMessage(msg, tx)
-				if (err != nil) != tt.wantErr {
-					t.Errorf("ParseWalMessage() error = %v, wantErr %v", err, tt.wantErr)
-				}
-			}
-
-			if len(tx.Actions) != tt.wantActionsCount {
-				t.Errorf("Actions count = %v, want %v", len(tx.Actions), tt.wantActionsCount)
-			}
-
-			if tx.origin != tt.wantOrigin {
-				t.Errorf("Origin = %v, want %v", tx.origin, tt.wantOrigin)
-			}
-		})
-	}
-}

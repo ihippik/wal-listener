@@ -59,32 +59,58 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
-    - name: Start PostgreSQL with logical replication
+    - name: Create Docker network
+      run: docker network create wal-test-network
+
+    - name: Start primary PostgreSQL (upstream)
       run: |
         docker run -d \
-          --name postgres-test \
+          --name postgres-primary \
+          --network wal-test-network \
           -e POSTGRES_USER=postgres \
           -e POSTGRES_PASSWORD=postgres \
           -e POSTGRES_DB=postgres \
           -p 5432:5432 \
           postgres:17 \
           -c wal_level=logical \
-          -c max_wal_senders=10 \
-          -c max_replication_slots=10
+          -c max_wal_senders=20 \
+          -c max_replication_slots=20
 
-    - name: Wait for PostgreSQL to be ready
+    - name: Start downstream PostgreSQL (for foreign origin testing)
+      run: |
+        docker run -d \
+          --name postgres-downstream \
+          --network wal-test-network \
+          -e POSTGRES_USER=postgres \
+          -e POSTGRES_PASSWORD=postgres \
+          -e POSTGRES_DB=postgres \
+          -p 5433:5432 \
+          postgres:17 \
+          -c wal_level=logical \
+          -c max_wal_senders=20 \
+          -c max_replication_slots=20
+
+    - name: Wait for PostgreSQL instances to be ready
       run: |
         for i in {1..30}; do
-          docker exec postgres-test pg_isready -U postgres && break
-          echo "Waiting for PostgreSQL..."
+          docker exec postgres-primary pg_isready -U postgres && break
+          echo "Waiting for primary PostgreSQL..."
+          sleep 2
+        done
+        for i in {1..30}; do
+          docker exec postgres-downstream pg_isready -U postgres && break
+          echo "Waiting for downstream PostgreSQL..."
           sleep 2
         done
 
     - name: Verify PostgreSQL configuration
       run: |
-        docker exec postgres-test psql -U postgres -c "SHOW wal_level;"
-        docker exec postgres-test psql -U postgres -c "SHOW max_replication_slots;"
-        docker exec postgres-test psql -U postgres -c "SHOW max_wal_senders;"
+        echo "=== Primary PostgreSQL ==="
+        docker exec postgres-primary psql -U postgres -c "SHOW wal_level;"
+        docker exec postgres-primary psql -U postgres -c "SHOW max_replication_slots;"
+        echo "=== Downstream PostgreSQL ==="
+        docker exec postgres-downstream psql -U postgres -c "SHOW wal_level;"
+        docker exec postgres-downstream psql -U postgres -c "SHOW max_replication_slots;"
     
     - name: Run integration tests
       env:
@@ -93,4 +119,9 @@ jobs:
         POSTGRES_USER: postgres
         POSTGRES_PASSWORD: postgres
         POSTGRES_DB: postgres
+        POSTGRES_DOWNSTREAM_HOST: localhost
+        POSTGRES_DOWNSTREAM_PORT: 5433
+        # Internal hostnames for container-to-container communication (used by subscriptions)
+        POSTGRES_PRIMARY_HOST_INTERNAL: postgres-primary
+        POSTGRES_PRIMARY_PORT_INTERNAL: 5432
       run: go test -v -tags=integration -timeout=300s ./listener/...
