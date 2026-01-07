@@ -34,9 +34,9 @@ The service publishes the following structure.
 The name of the topic for subscription to receive messages is formed from the prefix of the topic,
 the name of the database, and the name of the table `prefix + schema_table`.
 
-> If you are using Kafka, you may want to select a partition using a message key. 
-> You can do this in the producer configuration by specifying the **messageKeyFrom** variable, 
-> which will indicate from which table field to take the key. 
+> If you are using Kafka, you may want to select a partition using a message key.
+> You can do this in the producer configuration by specifying the **messageKeyFrom** variable,
+> which will indicate from which table field to take the key.
 > If there is no such field, the table name will be used.
 
 
@@ -83,6 +83,31 @@ topicsMap:
   main_customers: "notifier"
 ```
 
+## TLS Configuration
+
+The service supports secure TLS connections to PostgreSQL.
+
+### Configuration Options
+
+```yaml
+database:
+  host: localhost
+  port: 5432
+  name: my_db
+  user: postgres
+  password: postgres
+  enableTLS: true
+  sslMode: "require"
+```
+
+### SSL Modes
+
+- `require`: TLS connection required but certificate verification is skipped (default)
+- `verify-ca`: TLS connection required and server certificate is verified against CA
+- `verify-full`: TLS connection required, server certificate is verified against CA, and hostname is verified
+
+If `enableTLS` is true but `sslMode` is not specified, it defaults to `require` mode.
+
 ## DB setting
 You must make the following settings in the db configuration (postgresql.conf)
 * wal_level >= “logical”
@@ -124,6 +149,8 @@ database:
   user: postgres
   password: postgres
   debug: false
+  enableTLS: false # Enable TLS connection to PostgreSQL
+  sslMode: "require" # TLS mode when enableTLS is true: require, verify-ca, verify-full
 publisher:
    type: nats
    address: localhost:4222
@@ -155,7 +182,7 @@ You can take metrics by specifying an endpoint for Prometheus in the configurati
 | filter_skipped_events_total | the total number of skipped events   | `table`            |
 
 ### Kubernetes
-Application initializes a web server (*if a port is specified in the configuration*) with two endpoints 
+Application initializes a web server (*if a port is specified in the configuration*) with two endpoints
 for readiness `/ready`  and liveness `/healthz` probes.
 
 ## Docker

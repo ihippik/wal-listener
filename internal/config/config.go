@@ -60,11 +60,13 @@ func (c PublisherCfg) IsMessageKeyExists() bool {
 
 // DatabaseCfg path of the PostgreSQL DB config.
 type DatabaseCfg struct {
-	Host     string `valid:"required"`
-	Port     uint16 `valid:"required"`
-	Name     string `valid:"required"`
-	User     string `valid:"required"`
-	Password string `valid:"required"`
+	Host      string `valid:"required"`
+	Port      uint16 `valid:"required"`
+	Name      string `valid:"required"`
+	User      string `valid:"required"`
+	Password  string `valid:"required"`
+	EnableTLS bool
+	SSLMode   string
 }
 
 // FilterStruct incoming WAL message filter.

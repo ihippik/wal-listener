@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 
@@ -39,6 +40,15 @@ func initPgxConnections(cfg *config.DatabaseCfg, logger *slog.Logger) (*pgx.Conn
 		},
 	}
 
+	// Configure TLS if enabled.
+	if cfg.EnableTLS {
+		tlsConfig, err := configureTLS(cfg, logger)
+		if err != nil {
+			return nil, nil, fmt.Errorf("configure TLS: %w", err)
+		}
+		pgxConf.TLSConfig = tlsConfig
+	}
+
 	pgConn, err := pgx.Connect(pgxConf)
 	if err != nil {
 		return nil, nil, fmt.Errorf("db connection: %w", err)
@@ -50,6 +60,30 @@ func initPgxConnections(cfg *config.DatabaseCfg, logger *slog.Logger) (*pgx.Conn
 	}
 
 	return pgConn, rConnection, nil
+}
+
+// configureTLS configures TLS settings for PostgreSQL connection.
+func configureTLS(cfg *config.DatabaseCfg, logger *slog.Logger) (*tls.Config, error) {
+	tlsConfig := &tls.Config{}
+
+	// Set SSL mode based on configuration.
+	switch cfg.SSLMode {
+	case "require", "":
+		// Default to require if SSLMode is not specified.
+		tlsConfig.InsecureSkipVerify = true
+		if cfg.SSLMode == "" {
+			logger.Info("TLS enabled but no SSL mode specified, defaulting to 'require'")
+		}
+	case "verify-ca":
+		tlsConfig.InsecureSkipVerify = false
+	case "verify-full":
+		tlsConfig.InsecureSkipVerify = false
+		tlsConfig.ServerName = cfg.Host
+	default:
+		return nil, fmt.Errorf("unsupported SSL mode: %s", cfg.SSLMode)
+	}
+
+	return tlsConfig, nil
 }
 
 type pgxLogger struct {
