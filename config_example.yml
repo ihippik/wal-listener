@@ -20,6 +20,8 @@ database:
   user: postgres
   password: postgres
   debug: false
+  enableTLS: false # Enable TLS connection to PostgreSQL
+  sslMode: "require" # TLS mode when enableTLS is true: require, verify-ca, verify-full
 publisher:
   type: kafka
   messageKeyFrom: some_table_field # Kafka only
