@@ -501,6 +501,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				BeginTime:     &postgresEpoch,
 				RelationStore: make(map[int32]RelationData),
 				Actions:       make([]ActionData, 0),
+				transformers: nil,
 			},
 			wantErr: false,
 		},
@@ -529,6 +530,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				BeginTime:     &postgresEpoch,
 				CommitTime:    &postgresEpoch,
 				RelationStore: make(map[int32]RelationData),
+				transformers: nil,
 			},
 			wantErr: false,
 		},
@@ -587,6 +589,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						},
 					},
 				},
+				transformers: nil,
 			},
 			wantErr: false,
 		},
@@ -673,6 +676,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						OldColumns: []Column{},
 					},
 				},
+				transformers: nil,
 			},
 			wantErr: false,
 		},
@@ -774,6 +778,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						},
 					},
 				},
+				transformers: nil,
 			},
 			wantErr: false,
 		},
@@ -857,6 +862,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						},
 					},
 				},
+				transformers: nil,
 			},
 			wantErr: false,
 		},
@@ -926,6 +932,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						OldColumns: []Column{},
 					},
 				},
+				transformers: nil,
 			},
 			wantErr: false,
 		},
@@ -985,6 +992,7 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 						},
 					},
 				},
+				transformers: nil,
 			},
 			wantErr: false,
 		},
@@ -1001,7 +1009,18 @@ func TestBinaryParser_ParseWalMessage(t *testing.T) {
 				t.Errorf("ParseWalMessage() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			assert.Equal(t, tt.want, tt.args.tx)
+			// Compare all fields except transformers since instances are different  
+			if tt.want != nil {
+				assert.Equal(t, tt.want.log, tt.args.tx.log)
+				assert.Equal(t, tt.want.monitor, tt.args.tx.monitor)
+				assert.Equal(t, tt.want.LSN, tt.args.tx.LSN)
+				assert.Equal(t, tt.want.BeginTime, tt.args.tx.BeginTime)
+				assert.Equal(t, tt.want.CommitTime, tt.args.tx.CommitTime)
+				assert.Equal(t, tt.want.RelationStore, tt.args.tx.RelationStore)
+				assert.Equal(t, tt.want.Actions, tt.args.tx.Actions)
+				assert.Equal(t, tt.want.pool, tt.args.tx.pool)
+				// Skip transformers comparison since instances are different
+			}
 		})
 	}
 }

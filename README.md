@@ -74,6 +74,57 @@ and in particular `insert` and `update` data.
 - delete
 - truncate
 
+### Data Transformation
+
+WAL-Listener supports JavaScript-based data transformation, allowing you to modify event data before publishing to the message broker. This feature enables you to:
+
+- Transform data formats
+- Filter sensitive fields
+- Add computed fields
+- Apply business logic to events
+
+#### Configuration Example
+
+```yaml
+listener:
+  transformations:
+    users:
+      type: "js"
+      script: |
+        function transform(data, oldData, action) {
+          // Transform user data
+          return {
+            user_id: data.id,
+            email: data.email,
+            action_type: action,
+            transformed_at: new Date().toISOString()
+          };
+        }
+    orders:
+      type: "js" 
+      script: |
+        function transform(data, oldData, action) {
+          // Add order summary
+          data.total_items = data.items ? data.items.length : 0;
+          data.processed = true;
+          return data;
+        }
+```
+
+#### Transformation Function
+
+Your JavaScript transformation function receives three parameters:
+
+- `data` - Current row data (for insert/update operations)
+- `oldData` - Previous row data (for update/delete operations) 
+- `action` - The type of operation ("insert", "update", "delete", "truncate")
+
+The function must return an object that will be used as the transformed event data.
+
+#### Thread Safety
+
+The JavaScript transformer uses a thread-safe pool pattern to handle concurrent transformations efficiently. Each transformation runs in an isolated JavaScript runtime environment.
+
 ### Topic mapping
 By default, the output NATS topic name consists of prefix, DB schema, and DB table name,
 but if you want to send all updates in one topic, you should be configured the topic map:
@@ -139,6 +190,21 @@ listener:
         - update
   topicsMap:
     schema_table_name: "notifier"
+  transformations:
+    users:
+      type: "js"
+      script: |
+        function transform(data, oldData, action) {
+          // Remove sensitive data
+          delete data.password_hash;
+          delete data.ssn;
+          
+          // Add metadata
+          data.processed_at = new Date().toISOString();
+          data.event_type = action;
+          
+          return data;
+        }
 logger:
   level: info
   fmt: json

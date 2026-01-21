@@ -38,6 +38,7 @@ type ListenerCfg struct {
 	HeartbeatInterval time.Duration `valid:"required"`
 	Filter            FilterStruct
 	TopicsMap         map[string]string
+	Transformations   map[string]Transformation
 }
 
 // PublisherCfg represent configuration for any publisher types.
@@ -72,6 +73,17 @@ type DatabaseCfg struct {
 // FilterStruct incoming WAL message filter.
 type FilterStruct struct {
 	Tables map[string][]string
+}
+
+type TransformationEngineType string
+
+const (
+	TransformationEngineTypeJS TransformationEngineType = "js"
+)
+
+type Transformation struct {
+	Type   TransformationEngineType
+	Script string
 }
 
 // Validate config data.
