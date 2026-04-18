@@ -3,6 +3,7 @@ package publisher
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/ihippik/wal-listener/v2/internal/config"
 
@@ -15,15 +16,19 @@ type RabbitPublisher struct {
 	pt        string
 	conn      *rabbitmq.Conn
 	publisher *rabbitmq.Publisher
+	alive     atomic.Bool
 }
 
 // NewRabbitPublisher create new RabbitPublisher instance.
 func NewRabbitPublisher(pubTopic string, conn *rabbitmq.Conn, publisher *rabbitmq.Publisher) (*RabbitPublisher, error) {
-	return &RabbitPublisher{
-		pubTopic,
-		conn,
-		publisher,
-	}, nil
+	p := &RabbitPublisher{
+		pt:        pubTopic,
+		conn:      conn,
+		publisher: publisher,
+	}
+	p.alive.Store(true)
+
+	return p, nil
 }
 
 // Publish send events, implements eventPublisher.
@@ -35,13 +40,26 @@ func (p *RabbitPublisher) Publish(ctx context.Context, topic string, event *Even
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	return p.publisher.PublishWithContext(
+	err = p.publisher.PublishWithContext(
 		ctx,
 		body,
 		[]string{topic},
 		rabbitmq.WithPublishOptionsContentType(contentTypeJSON),
 		rabbitmq.WithPublishOptionsExchange(p.pt),
 	)
+	if err != nil {
+		p.alive.Store(false)
+		return err
+	}
+
+	p.alive.Store(true)
+
+	return nil
+}
+
+// IsAlive returns the latest publisher health state.
+func (p *RabbitPublisher) IsAlive() bool {
+	return p.alive.Load()
 }
 
 // Close represent finalization for RabbitMQ publisher.
