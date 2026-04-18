@@ -13,7 +13,7 @@ To maintain the consistency of data in the system, we will use **transactional m
 publishing events in a single transaction with a domain model change.
 
 The service allows you to subscribe to changes in the PostgreSQL database using its logical decoding capability
-and publish them to the NATS Streaming server.
+and publish them to a message broker.
 
 ## Logic of work
 To receive events about data changes in our PostgreSQL DB
@@ -34,11 +34,10 @@ The service publishes the following structure.
 The name of the topic for subscription to receive messages is formed from the prefix of the topic,
 the name of the database, and the name of the table `prefix + schema_table`.
 
-> If you are using Kafka, you may want to select a partition using a message key. 
-> You can do this in the producer configuration by specifying the **messageKeyFrom** variable, 
-> which will indicate from which table field to take the key. 
+> If you are using Kafka, you may want to select a partition using a message key.
+> You can do this in the producer configuration by specifying the **messageKeyFrom** variable,
+> which will indicate from which table field to take the key.
 > If there is no such field, the table name will be used.
-
 
 ```go
 {
@@ -53,6 +52,31 @@ the name of the database, and the name of the table `prefix + schema_table`.
 ```
 
 Messages are published to the broker at least once!
+
+## Production checklist
+
+Before running WAL-Listener in production, make sure that:
+
+- PostgreSQL is configured for logical replication:
+  - `wal_level >= logical`
+  - `max_replication_slots >= 1`
+- consumers are **idempotent**, because events are delivered **at least once**
+- the replication slot name is treated as part of the deployment state
+- Prometheus metrics and Kubernetes probes are enabled
+- broker-specific connection and reconnect behavior is understood before rollout
+
+## Delivery semantics
+
+WAL-Listener publishes events with **at least once** delivery semantics.
+
+This means that in normal operation each change should be published once, but duplicates are still possible during reconnects, retries, restarts, or broker-side failures. Consumers should therefore be designed to be idempotent.
+
+Typical ways to achieve this:
+- deduplicate by event ID
+- deduplicate by business key and version
+- make downstream writes naturally idempotent
+
+WAL-Listener does **not** guarantee exactly-once delivery.
 
 ### Filter configuration example
 
@@ -93,6 +117,32 @@ Notes:
 
 1. To receive `DataOld` field you need to change REPLICA IDENTITY to FULL as described here:
    [#SQL-ALTERTABLE-REPLICA-IDENTITY](https://www.postgresql.org/docs/current/sql-altertable.html#SQL-ALTERTABLE-REPLICA-IDENTITY)
+
+## Common pitfalls and troubleshooting
+
+### `DataOld` is empty
+
+To receive old row values in `DataOld`, the table must use `REPLICA IDENTITY FULL` as described in the PostgreSQL documentation:
+[#SQL-ALTERTABLE-REPLICA-IDENTITY](https://www.postgresql.org/docs/current/sql-altertable.html#SQL-ALTERTABLE-REPLICA-IDENTITY)
+
+### Events behave unexpectedly after changing publication settings
+
+If you change the publication, remember to use a new slot name or remove the old slot before restarting WAL-Listener. Replication slots preserve state and may continue from an unexpected position if reused after publication changes.
+
+### Duplicate messages appear downstream
+
+This is expected under **at least once** delivery semantics. Downstream consumers should be able to process the same event more than once without producing incorrect side effects.
+
+### The process is running but no events are reaching the broker
+
+Check:
+- PostgreSQL logical replication settings
+- publication and slot configuration
+- broker connectivity
+- application logs
+- Prometheus metrics
+
+If Kubernetes probes are enabled, also verify that readiness and liveness are configured correctly in the deployment.
 
 ## Service configuration
 > All config entities are written in camelCase, except for the database entities themselves
@@ -148,9 +198,27 @@ You can take metrics by specifying an endpoint for Prometheus in the configurati
 | published_events_total      | the total number of published events | `subject`, `table` |
 | filter_skipped_events_total | the total number of skipped events   | `table`            |
 
-### Kubernetes
-Application initializes a web server (*if a port is specified in the configuration*) with two endpoints 
-for readiness `/ready`  and liveness `/healthz` probes.
+## Kubernetes notes
+
+If `listener.serverPort` is configured, WAL-Listener starts an HTTP server with:
+- readiness probe: `/ready`
+- liveness probe: `/healthz`
+
+This is recommended for production deployments in Kubernetes so that orchestration can detect unhealthy instances and restart them when needed.
+
+## Observability notes
+
+For production usage, it is recommended to enable:
+
+- Prometheus metrics via `monitoring.promAddr`
+- Sentry via `monitoring.sentryDSN`
+- structured logs via `logger.fmt: json`
+
+Useful built-in metrics:
+- `published_events_total`
+- `filter_skipped_events_total`
+
+A rising number of skipped events usually means the current table/action filter excludes incoming changes. A lack of published events together with active database changes may indicate connectivity or broker-side issues.
 
 ## Docker
 
