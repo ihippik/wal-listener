@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync/atomic"
 
 	"github.com/IBM/sarama"
 	"github.com/goccy/go-json"
@@ -19,15 +20,19 @@ type KafkaPublisher struct {
 	cfg      *config.PublisherCfg
 	log      *slog.Logger
 	producer sarama.SyncProducer
+	alive    atomic.Bool
 }
 
 // NewKafkaPublisher return new KafkaPublisher instance.
 func NewKafkaPublisher(cfg *config.PublisherCfg, logger *slog.Logger, producer sarama.SyncProducer) *KafkaPublisher {
-	return &KafkaPublisher{
+	p := &KafkaPublisher{
 		cfg:      cfg,
 		log:      logger,
 		producer: producer,
 	}
+	p.alive.Store(true)
+
+	return p
 }
 
 func (p *KafkaPublisher) Publish(_ context.Context, topic string, event *Event) error {
@@ -44,9 +49,11 @@ func (p *KafkaPublisher) Publish(_ context.Context, topic string, event *Event) 
 
 	partition, offset, err := p.producer.SendMessage(prepareMessage(topic, key, data))
 	if err != nil {
+		p.alive.Store(false)
 		return fmt.Errorf("send message: %w", err)
 	}
 
+	p.alive.Store(true)
 	p.log.Debug(
 		"kafka producer: message was sent",
 		slog.String("key", string(key)),
@@ -55,6 +62,11 @@ func (p *KafkaPublisher) Publish(_ context.Context, topic string, event *Event) 
 	)
 
 	return nil
+}
+
+// IsAlive returns the latest publisher health state.
+func (p *KafkaPublisher) IsAlive() bool {
+	return p.alive.Load()
 }
 
 // Close connection close.
