@@ -1,18 +1,18 @@
 listener:
-  serverPort: 80 # k8s probes, optional
-  slotName: myslot_1
-  refreshConnection: 30s
-  heartbeatInterval: 10s
+  serverPort: 80 # optional HTTP server for Kubernetes probes: /ready and /healthz
+  slotName: myslot_1 # replication slot state is persistent; use a new slot if publication settings change
+  refreshConnection: 30s # periodic refresh of replication connection
+  heartbeatInterval: 10s # status updates to PostgreSQL replication stream
   filter:
     tables:
       seasons:
         - insert
         - update
   topicsMap:
-    schema_table_name: "notifier"
+    schema_table_name: "notifier" # map specific schema_table events to a custom topic
 logger:
   level: info
-  fmt: json
+  fmt: json # recommended for production log collection
 database:
   host: localhost
   port: 5432
@@ -21,8 +21,8 @@ database:
   password: postgres
   debug: false
 publisher:
-  type: kafka
-  messageKeyFrom: some_table_field # Kafka only
+  type: kafka # supported: nats, kafka, rabbitmq, google_pubsub
+  messageKeyFrom: some_table_field # Kafka only; useful for partitioning and idempotent consumers
   address: localhost:4222
   enable_tls: true # Kafka only
   client_cert: "cert.pem" # Kafka only
@@ -31,5 +31,5 @@ publisher:
   topic: "wal_listener"
   topicPrefix: ""
 monitoring:
-  sentryDSN: ""
-  promAddr: ":2112"
+  sentryDSN: "" # optional error reporting
+  promAddr: ":2112" # Prometheus metrics endpoint
