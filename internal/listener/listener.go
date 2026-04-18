@@ -28,6 +28,10 @@ type eventPublisher interface {
 	Publish(context.Context, string, *publisher.Event) error
 }
 
+type healthReporter interface {
+	IsAlive() bool
+}
+
 type parser interface {
 	ParseWalMessage([]byte, *tx.WAL) error
 }
@@ -162,11 +166,18 @@ func (l *Listener) readiness(w http.ResponseWriter, _ *http.Request) {
 
 	w.Header().Set("Content-Type", contentTypeTextPlain)
 
-	if !l.isAlive.Load() {
+	if !l.isAlive.Load() || !l.replicator.IsAlive() || !l.repository.IsAlive() {
 		resp = []byte("failed")
 		respCode = http.StatusInternalServerError
 
 		l.log.Warn("readiness probe failed")
+	}
+
+	if hp, ok := l.publisher.(healthReporter); ok && !hp.IsAlive() {
+		resp = []byte("failed")
+		respCode = http.StatusInternalServerError
+
+		l.log.Warn("readiness probe failed: publisher is unhealthy")
 	}
 
 	w.WriteHeader(respCode)
