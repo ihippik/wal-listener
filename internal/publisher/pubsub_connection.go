@@ -2,11 +2,13 @@ package publisher
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 
 	"cloud.google.com/go/pubsub"
+	"google.golang.org/api/iterator"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -78,4 +80,14 @@ func (c *PubSubConnection) Publish(ctx context.Context, topic string, data []byt
 
 func (c *PubSubConnection) Close() error {
 	return c.client.Close()
+}
+
+func (c *PubSubConnection) CheckHealth(ctx context.Context) error {
+	topics := c.client.Topics(ctx)
+
+	if _, err := topics.Next(); err != nil && !errors.Is(err, iterator.Done) {
+		return fmt.Errorf("topics: %w", err)
+	}
+
+	return nil
 }

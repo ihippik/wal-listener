@@ -45,17 +45,32 @@ func (n *NatsPublisher) Publish(_ context.Context, subject string, event *Event)
 	}
 
 	if _, err := n.js.Publish(subject, msg); err != nil {
-		n.alive.Store(false)
 		return fmt.Errorf("failed to publish: %w", err)
 	}
 
-	n.alive.Store(true)
 	return nil
 }
 
 // IsAlive returns the latest publisher health state.
 func (n *NatsPublisher) IsAlive() bool {
 	return n.alive.Load()
+}
+
+// CheckHealth verifies NATS connection state.
+func (n *NatsPublisher) CheckHealth(_ context.Context) error {
+	if n.conn == nil {
+		n.alive.Store(false)
+		return fmt.Errorf("nats connection is nil")
+	}
+
+	if n.conn.IsClosed() || !n.conn.IsConnected() {
+		n.alive.Store(false)
+		return fmt.Errorf("nats connection status: %s", n.conn.Status().String())
+	}
+
+	n.alive.Store(true)
+
+	return nil
 }
 
 // CreateStream creates a stream by using JetStreamContext. We can do it manually.

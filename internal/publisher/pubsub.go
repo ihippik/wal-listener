@@ -31,19 +31,27 @@ func (p *GooglePubSubPublisher) Publish(ctx context.Context, topic string, event
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	err = p.pubSubConnection.Publish(ctx, topic, body)
-	if err != nil {
-		p.alive.Store(false)
-		return err
+	if err = p.pubSubConnection.Publish(ctx, topic, body); err != nil {
+		return fmt.Errorf("publish: %w", err)
 	}
 
-	p.alive.Store(true)
 	return nil
 }
 
 // IsAlive returns the latest publisher health state.
 func (p *GooglePubSubPublisher) IsAlive() bool {
 	return p.alive.Load()
+}
+
+func (p *GooglePubSubPublisher) CheckHealth(ctx context.Context) error {
+	if err := p.pubSubConnection.CheckHealth(ctx); err != nil {
+		p.alive.Store(false)
+		return fmt.Errorf("check health: %w", err)
+	}
+
+	p.alive.Store(true)
+
+	return nil
 }
 
 func (p *GooglePubSubPublisher) Close() error {
