@@ -145,8 +145,16 @@ func TestListener_readiness(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			repl := newMockreplication(t)
+			repl.On("IsAlive").Return(true).Maybe()
+
+			repo := newMockrepository(t)
+			repo.On("IsAlive").Return(true).Maybe()
+
 			l := &Listener{
-				log: logger,
+				log:        logger,
+				repository: repo,
+				replicator: repl,
 			}
 
 			l.isAlive.Store(tt.isAlive)

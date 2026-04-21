@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 
 	"github.com/goccy/go-json"
 	"github.com/nats-io/nats.go"
@@ -14,6 +15,7 @@ type NatsPublisher struct {
 	conn   *nats.Conn
 	js     nats.JetStreamContext
 	logger *slog.Logger
+	alive  atomic.Bool
 }
 
 // NewNatsPublisher return new NatsPublisher instance.
@@ -23,17 +25,20 @@ func NewNatsPublisher(conn *nats.Conn, logger *slog.Logger) (*NatsPublisher, err
 		return nil, fmt.Errorf("jet stream: %w", err)
 	}
 
-	return &NatsPublisher{conn: conn, js: js, logger: logger}, nil
+	p := &NatsPublisher{conn: conn, js: js, logger: logger}
+	p.alive.Store(true)
+
+	return p, nil
 }
 
 // Close connection.
-func (n NatsPublisher) Close() error {
+func (n *NatsPublisher) Close() error {
 	n.conn.Close()
 	return nil
 }
 
 // Publish serializes the event and publishes it on the bus.
-func (n NatsPublisher) Publish(_ context.Context, subject string, event *Event) error {
+func (n *NatsPublisher) Publish(_ context.Context, subject string, event *Event) error {
 	msg, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal err: %w", err)
@@ -46,8 +51,30 @@ func (n NatsPublisher) Publish(_ context.Context, subject string, event *Event) 
 	return nil
 }
 
+// IsAlive returns the latest publisher health state.
+func (n *NatsPublisher) IsAlive() bool {
+	return n.alive.Load()
+}
+
+// CheckHealth verifies NATS connection state.
+func (n *NatsPublisher) CheckHealth(_ context.Context) error {
+	if n.conn == nil {
+		n.alive.Store(false)
+		return fmt.Errorf("nats connection is nil")
+	}
+
+	if n.conn.IsClosed() || !n.conn.IsConnected() {
+		n.alive.Store(false)
+		return fmt.Errorf("nats connection status: %s", n.conn.Status().String())
+	}
+
+	n.alive.Store(true)
+
+	return nil
+}
+
 // CreateStream creates a stream by using JetStreamContext. We can do it manually.
-func (n NatsPublisher) CreateStream(streamName string) error {
+func (n *NatsPublisher) CreateStream(streamName string) error {
 	stream, err := n.js.StreamInfo(streamName)
 	if err != nil {
 		n.logger.Warn("failed to get stream info", "err", err)

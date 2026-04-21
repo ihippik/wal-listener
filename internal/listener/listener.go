@@ -28,6 +28,11 @@ type eventPublisher interface {
 	Publish(context.Context, string, *publisher.Event) error
 }
 
+type healthReporter interface {
+	IsAlive() bool
+	CheckHealth(context.Context) error
+}
+
 type parser interface {
 	ParseWalMessage([]byte, *tx.WAL) error
 }
@@ -74,6 +79,7 @@ type Listener struct {
 var (
 	errReplConnectionIsLost = errors.New("replication connection to postgres is lost")
 	errConnectionIsLost     = errors.New("db connection to postgres is lost")
+	errPubConnectionIsLost  = errors.New("publisher connection is lost")
 	errReplDidNotStart      = errors.New("replication did not start")
 )
 
@@ -162,11 +168,18 @@ func (l *Listener) readiness(w http.ResponseWriter, _ *http.Request) {
 
 	w.Header().Set("Content-Type", contentTypeTextPlain)
 
-	if !l.isAlive.Load() {
+	if !l.isAlive.Load() || !l.replicator.IsAlive() || !l.repository.IsAlive() {
 		resp = []byte("failed")
 		respCode = http.StatusInternalServerError
 
 		l.log.Warn("readiness probe failed")
+	}
+
+	if hp, ok := l.publisher.(healthReporter); ok && !hp.IsAlive() {
+		resp = []byte("failed")
+		respCode = http.StatusInternalServerError
+
+		l.log.Warn("readiness probe failed: publisher is unhealthy")
 	}
 
 	w.WriteHeader(respCode)
@@ -232,12 +245,39 @@ func (l *Listener) Process(ctx context.Context) error {
 	group.Go(func() error {
 		return l.checkConnection(ctx)
 	})
+	group.Go(func() error {
+		return l.checkPublisherConnection(ctx)
+	})
 
 	if err = group.Wait(); err != nil {
 		return fmt.Errorf("group: %w", err)
 	}
 
 	return nil
+}
+
+// checkPublisherConnection periodically checks publisher connection health.
+func (l *Listener) checkPublisherConnection(ctx context.Context) error {
+	hp, ok := l.publisher.(healthReporter)
+	if !ok {
+		l.log.Warn("publisher: healthReporter interface is not supported")
+		return nil
+	}
+
+	refresh := time.NewTicker(l.cfg.Listener.RefreshConnection)
+	defer refresh.Stop()
+
+	for {
+		select {
+		case <-refresh.C:
+			if err := hp.CheckHealth(ctx); err != nil {
+				l.log.Warn("publisher connection is not healthy", "err", err)
+			}
+		case <-ctx.Done():
+			l.log.Debug("check publisher connection: context was canceled")
+			return nil
+		}
+	}
 }
 
 // checkConnection periodically checks connections.
