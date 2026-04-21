@@ -132,12 +132,12 @@ func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slo
 			return nil, fmt.Errorf("new connection: %w", err)
 		}
 
-		p, err := publisher.NewPublisher(cfg.Topic, conn)
+		p, err := publisher.NewPublisher(cfg.Topic, cfg.ExchangeKind, conn)
 		if err != nil {
 			return nil, fmt.Errorf("new publisher: %w", err)
 		}
 
-		pub, err := publisher.NewRabbitPublisher(cfg.Topic, conn, p)
+		pub, err := publisher.NewRabbitPublisher(cfg.Topic, cfg.ExchangeKind, conn, p)
 		if err != nil {
 			return nil, fmt.Errorf("new rabbit publisher: %w", err)
 		}
