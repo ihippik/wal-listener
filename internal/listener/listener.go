@@ -270,7 +270,7 @@ func (l *Listener) checkPublisherConnection(ctx context.Context) error {
 		select {
 		case <-refresh.C:
 			if err := hp.CheckHealth(ctx); err != nil {
-				return fmt.Errorf("%w: %w", errPubConnectionIsLost, err)
+				l.log.Warn("publisher connection is not healthy", "err", err)
 			}
 		case <-ctx.Done():
 			l.log.Debug("check publisher connection: context was canceled")
