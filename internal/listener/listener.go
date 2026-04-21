@@ -260,6 +260,7 @@ func (l *Listener) Process(ctx context.Context) error {
 func (l *Listener) checkPublisherConnection(ctx context.Context) error {
 	hp, ok := l.publisher.(healthReporter)
 	if !ok {
+		l.log.Warn("publisher: healthReporter interface is not supported")
 		return nil
 	}
 
