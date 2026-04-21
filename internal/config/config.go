@@ -46,6 +46,7 @@ type PublisherCfg struct {
 	MessageKeyFrom  string
 	Address         string
 	Topic           string `valid:"required"`
+	ExchangeKind    string
 	TopicPrefix     string
 	EnableTLS       bool
 	ClientCert      string
@@ -77,7 +78,15 @@ type FilterStruct struct {
 // Validate config data.
 func (c Config) Validate() error {
 	_, err := govalidator.ValidateStruct(c)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if c.Publisher != nil && c.Publisher.Type == PublisherTypeRabbitMQ && c.Publisher.ExchangeKind == "" {
+		return fmt.Errorf("publisher.exchange_kind is required for rabbitmq publisher")
+	}
+
+	return nil
 }
 
 // InitConfig load config from file.
