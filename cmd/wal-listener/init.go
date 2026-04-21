@@ -104,7 +104,7 @@ type eventPublisher interface {
 func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slog.Logger) (eventPublisher, error) {
 	switch cfg.Type {
 	case config.PublisherTypeKafka:
-		client, producer, err := publisher.NewProducer(cfg)
+		client, producer, err := publisher.NewKafkaClientAndProducer(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("kafka producer: %w", err)
 		}

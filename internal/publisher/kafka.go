@@ -116,8 +116,8 @@ func (p *KafkaPublisher) keyData(e *Event) []byte {
 	return []byte(e.Table)
 }
 
-// NewProducer return new Kafka producer instance.
-func NewProducer(pCfg *config.PublisherCfg) (sarama.Client, sarama.SyncProducer, error) {
+// NewKafkaClientAndProducer returns Kafka client and sync producer instances.
+func NewKafkaClientAndProducer(pCfg *config.PublisherCfg) (sarama.Client, sarama.SyncProducer, error) {
 	cfg := sarama.NewConfig()
 	cfg.Producer.Partitioner = sarama.NewRandomPartitioner
 
