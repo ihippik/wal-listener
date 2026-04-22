@@ -15,23 +15,30 @@ import (
 
 // RabbitPublisher represent event publisher for RabbitMQ.
 type RabbitPublisher struct {
-	pt      string
-	conn    *amqp.Connection
-	channel *amqp.Channel
-	mu      sync.Mutex
-	alive   atomic.Bool
+	pt           string
+	exchangeKind string
+	conn         *amqp.Connection
+	channel      *amqp.Channel
+	mu           sync.Mutex
+	alive        atomic.Bool
 }
 
 // NewRabbitPublisher create new RabbitPublisher instance.
 func NewRabbitPublisher(
 	pubTopic string,
+	exchangeKind string,
 	conn *amqp.Connection,
 	channel *amqp.Channel,
 ) (*RabbitPublisher, error) {
+	if exchangeKind == "" {
+		return nil, fmt.Errorf("exchange kind is required")
+	}
+
 	p := &RabbitPublisher{
-		pt:      pubTopic,
-		conn:    conn,
-		channel: channel,
+		pt:           pubTopic,
+		exchangeKind: exchangeKind,
+		conn:         conn,
+		channel:      channel,
 	}
 	p.alive.Store(true)
 
@@ -90,7 +97,7 @@ func (p *RabbitPublisher) CheckHealth(_ context.Context) error {
 	// Passive declaration validates exchange availability over current channel.
 	if err := p.channel.ExchangeDeclarePassive(
 		p.pt,
-		"topic",
+		p.exchangeKind,
 		true,
 		false,
 		false,
@@ -132,7 +139,7 @@ func NewConnection(pCfg *config.PublisherCfg) (*amqp.Connection, error) {
 }
 
 // NewPublisher creates a channel and declares the topic exchange.
-func NewPublisher(topic string, conn *amqp.Connection) (*amqp.Channel, error) {
+func NewPublisher(topic, exchangeKind string, conn *amqp.Connection) (*amqp.Channel, error) {
 	channel, err := conn.Channel()
 	if err != nil {
 		return nil, fmt.Errorf("open channel: %w", err)
@@ -140,7 +147,7 @@ func NewPublisher(topic string, conn *amqp.Connection) (*amqp.Channel, error) {
 
 	if err = channel.ExchangeDeclare(
 		topic,
-		"topic",
+		exchangeKind,
 		true,
 		false,
 		false,
