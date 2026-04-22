@@ -39,6 +39,8 @@ the name of the database, and the name of the table `prefix + schema_table`.
 > which will indicate from which table field to take the key.
 > If there is no such field, the table name will be used.
 
+> If you are using RabbitMQ, you must specify the **exchangeKind** config variable as [ *fanout* / *topic* / *direct* ]
+
 
 ```go
 {

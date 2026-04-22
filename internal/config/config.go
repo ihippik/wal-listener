@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -75,6 +76,8 @@ type FilterStruct struct {
 	Tables map[string][]string
 }
 
+var errExchangeKindRequired = errors.New("publisher.exchangeKind is required for RabbitMQ publisher")
+
 // Validate config data.
 func (c Config) Validate() error {
 	_, err := govalidator.ValidateStruct(c)
@@ -83,13 +86,13 @@ func (c Config) Validate() error {
 	}
 
 	if c.Publisher != nil && c.Publisher.Type == PublisherTypeRabbitMQ && c.Publisher.ExchangeKind == "" {
-		return fmt.Errorf("publisher.exchange_kind is required for rabbitmq publisher")
+		return errExchangeKindRequired
 	}
 
 	return nil
 }
 
-// InitConfig load config from file.
+// InitConfig load config from a file.
 func InitConfig(path string) (*Config, error) {
 	const envPrefix = "WAL"
 

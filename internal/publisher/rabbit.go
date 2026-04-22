@@ -145,11 +145,6 @@ func NewPublisher(topic, exchangeKind string, conn *amqp.Connection) (*amqp.Chan
 		return nil, fmt.Errorf("open channel: %w", err)
 	}
 
-	if exchangeKind == "" {
-		_ = channel.Close()
-		return nil, fmt.Errorf("exchange kind is required")
-	}
-
 	if err = channel.ExchangeDeclare(
 		topic,
 		exchangeKind,
