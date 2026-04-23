@@ -7,15 +7,19 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/ihippik/wal-listener/v2/config"
+	"github.com/ihippik/wal-listener/v2/publisher"
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -710,4 +714,100 @@ func TestListener_logRetainedWalBytes(t *testing.T) {
 			}
 		})
 	}
+}
+
+// countingMonitor is a monitor implementation that records call counts for assertions.
+type countingMonitor struct {
+	publishedEvents    int
+	filterSkippedEvts  int
+	problematicEvents  map[string]int
+	lastPublishSubject string
+	lastPublishTable   string
+}
+
+func newCountingMonitor() *countingMonitor {
+	return &countingMonitor{problematicEvents: make(map[string]int)}
+}
+
+func (m *countingMonitor) IncPublishedEvents(subject, table string) {
+	m.publishedEvents++
+	m.lastPublishSubject = subject
+	m.lastPublishTable = table
+}
+func (m *countingMonitor) IncFilterSkippedEvents(table string) { m.filterSkippedEvts++ }
+func (m *countingMonitor) IncProblematicEvents(kind string)    { m.problematicEvents[kind]++ }
+
+// TestListener_handlePublishResult_NilErrorResult verifies that when a publisher
+// returns publisher.NewPublishResult(nil) — as GooglePubSubPublisher does for
+// oversized messages it deliberately drops — the listener's result handler treats
+// it as a successful publish: no error metric, event returned to the pool, and
+// the attached XLogData advances latestWalStart.
+func TestListener_handlePublishResult_NilErrorResult(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	monitor := newCountingMonitor()
+
+	l := &Listener{
+		log:     logger,
+		monitor: monitor,
+		cfg:     &config.Config{Listener: &config.ListenerCfg{}},
+	}
+
+	pool := &sync.Pool{New: func() any { return &publisher.Event{} }}
+	var latest atomic.Uint64
+
+	event := pool.Get().(*publisher.Event)
+	event.Schema = "public"
+	event.Table = "widgets"
+	event.Action = "update"
+
+	xldWALStart := pglogrepl.LSN(5000)
+	object := &eventAndPublishResult{
+		subjectName: "test.public_widgets",
+		event:       event,
+		result:      publisher.NewPublishResult(nil),
+		xld: &pglogrepl.XLogData{
+			WALStart: xldWALStart,
+			WALData:  []byte{0x01},
+		},
+	}
+
+	l.handlePublishResult(context.Background(), object, pool, &latest)
+
+	assert.Equal(t, 1, monitor.publishedEvents, "expected one successful publish increment")
+	assert.Equal(t, 0, monitor.problematicEvents[problemKindPublish], "expected no publish problem increment")
+	assert.Equal(t, "test.public_widgets", monitor.lastPublishSubject)
+	assert.Equal(t, "widgets", monitor.lastPublishTable)
+	assert.Equal(t, uint64(xldWALStart), latest.Load(), "expected latestWalStart to advance to xld.WALStart")
+
+	// Event should have been returned to the pool; fetching it back should yield the same pointer.
+	reused := pool.Get().(*publisher.Event)
+	require.Same(t, event, reused, "expected the event to be returned to the pool after publish")
+}
+
+// TestListener_handlePublishResult_NilResult verifies that an eventAndPublishResult
+// carrying a nil PublishResult (e.g. the "empty events" case) does not touch
+// monitor counters but still advances latestWalStart from any attached xld/pkm.
+func TestListener_handlePublishResult_NilResult(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	monitor := newCountingMonitor()
+
+	l := &Listener{
+		log:     logger,
+		monitor: monitor,
+		cfg:     &config.Config{Listener: &config.ListenerCfg{}},
+	}
+
+	pool := &sync.Pool{New: func() any { return &publisher.Event{} }}
+	var latest atomic.Uint64
+
+	object := &eventAndPublishResult{
+		result: nil,
+		pkm:    &pglogrepl.PrimaryKeepaliveMessage{ServerWALEnd: pglogrepl.LSN(9000)},
+	}
+
+	l.handlePublishResult(context.Background(), object, pool, &latest)
+
+	assert.Equal(t, 0, monitor.publishedEvents)
+	assert.Equal(t, 0, monitor.problematicEvents[problemKindPublish])
+	assert.Equal(t, uint64(9000), latest.Load(), "expected latestWalStart to advance to pkm.ServerWALEnd")
 }

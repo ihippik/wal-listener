@@ -555,50 +555,7 @@ func (l *Listener) Stream(ctx context.Context) error {
 				l.log.Warn("stream: context canceled", "err", ctx.Err())
 				return nil
 			case object := <-resultChan:
-				subjectName, result, event, xld, pkm := object.subjectName, object.result, object.event, object.xld, object.pkm
-
-				if result != nil {
-					_, err := result.Get(ctx)
-					if err != nil {
-						// Only warn on publish failures, but continue to process and ack messages
-						// this runs the risk of losing data, but this it is more important to keep processing WAL messages in the meantime
-						l.monitor.IncProblematicEvents(problemKindPublish)
-
-						l.log.Warn(
-							"failed to publish message",
-							slog.Any("error", err),
-							slog.String("subjectName", subjectName),
-							slog.String("table", event.Table),
-							slog.String("action", event.Action),
-						)
-					} else {
-						l.monitor.IncPublishedEvents(subjectName, event.Table)
-						l.log.Debug(
-							"event was sent",
-							slog.String("subject", subjectName),
-							slog.String("action", event.Action),
-							slog.String("schema", event.Schema),
-							slog.String("table", event.Table),
-							slog.String("lsn", l.readLSN().String()),
-						)
-					}
-					tx.pool.Put(event)
-				}
-
-				latest := latestWalStart.Load()
-				if pkm != nil {
-					walEnd := uint64(pkm.ServerWALEnd)
-					if walEnd > latest {
-						latestWalStart.Store(walEnd)
-					}
-				} else if xld != nil {
-					// We do not need to compare and swap here as there's only one thread
-					// writing to this value
-					walStart := uint64(xld.WALStart)
-					if xld.WALData != nil && walStart > latest {
-						latestWalStart.Store(walStart)
-					}
-				}
+				l.handlePublishResult(ctx, object, tx.pool, &latestWalStart)
 			}
 		}
 	})
@@ -626,6 +583,64 @@ func (l *Listener) Stream(ctx context.Context) error {
 	})
 
 	return group.Wait()
+}
+
+// handlePublishResult processes a single publish result delivered via the
+// result chan: it records monitor/log output for the publish outcome, returns
+// the event to the pool, and advances latestWalStart from any attached
+// keepalive or XLogData. A nil result is treated as a successful no-op
+// (used by oversized-message drops); LSN bookkeeping still runs so the slot
+// advances.
+func (l *Listener) handlePublishResult(
+	ctx context.Context,
+	object *eventAndPublishResult,
+	pool *sync.Pool,
+	latestWalStart *atomic.Uint64,
+) {
+	subjectName, result, event, xld, pkm := object.subjectName, object.result, object.event, object.xld, object.pkm
+
+	if result != nil {
+		_, err := result.Get(ctx)
+		if err != nil {
+			// Only warn on publish failures, but continue to process and ack messages
+			// this runs the risk of losing data, but this it is more important to keep processing WAL messages in the meantime
+			l.monitor.IncProblematicEvents(problemKindPublish)
+
+			l.log.Warn(
+				"failed to publish message",
+				slog.Any("error", err),
+				slog.String("subjectName", subjectName),
+				slog.String("table", event.Table),
+				slog.String("action", event.Action),
+			)
+		} else {
+			l.monitor.IncPublishedEvents(subjectName, event.Table)
+			l.log.Debug(
+				"event was sent",
+				slog.String("subject", subjectName),
+				slog.String("action", event.Action),
+				slog.String("schema", event.Schema),
+				slog.String("table", event.Table),
+				slog.String("lsn", l.readLSN().String()),
+			)
+		}
+		pool.Put(event)
+	}
+
+	latest := latestWalStart.Load()
+	if pkm != nil {
+		walEnd := uint64(pkm.ServerWALEnd)
+		if walEnd > latest {
+			latestWalStart.Store(walEnd)
+		}
+	} else if xld != nil {
+		// We do not need to compare and swap here as there's only one thread
+		// writing to this value
+		walStart := uint64(xld.WALStart)
+		if xld.WALData != nil && walStart > latest {
+			latestWalStart.Store(walStart)
+		}
+	}
 }
 
 func (l *Listener) processHeartBeat(ctx context.Context, pkm *pglogrepl.PrimaryKeepaliveMessage) {
