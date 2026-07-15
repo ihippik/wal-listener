@@ -110,6 +110,23 @@ database:
 
 If `enableTLS` is true but `sslMode` is not specified, it defaults to `require` mode.
 
+### Publisher TLS (Kafka & NATS)
+
+The publisher connection also supports TLS, including mutual TLS (client certificates), for the Kafka and NATS publisher types:
+
+```yaml
+publisher:
+  type: nats
+  address: tls://nats.example.com:4222
+  topic: "wal_listener"
+  enableTLS: true
+  clientCert: /etc/certs/client.crt # optional: client certificate for mTLS
+  clientKey: /etc/certs/client.key  # optional: client key for mTLS
+  caCert: /etc/certs/ca.crt         # optional: CA to verify the server certificate
+```
+
+For NATS, `clientCert`/`clientKey` and `caCert` are each optional: with `enableTLS: true` and no certificates, the connection uses TLS with system root CAs.
+
 ## DB setting
 You must make the following settings in the db configuration (postgresql.conf)
 * wal_level >= “logical”

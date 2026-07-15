@@ -111,7 +111,21 @@ func factoryPublisher(ctx context.Context, cfg *config.PublisherCfg, logger *slo
 
 		return publisher.NewKafkaPublisher(cfg, logger, client, producer), nil
 	case config.PublisherTypeNats:
-		conn, err := nats.Connect(cfg.Address)
+		var opts []nats.Option
+
+		if cfg.EnableTLS {
+			opts = append(opts, nats.Secure())
+
+			if cfg.ClientCert != "" || cfg.ClientKey != "" {
+				opts = append(opts, nats.ClientCert(cfg.ClientCert, cfg.ClientKey))
+			}
+
+			if cfg.CACert != "" {
+				opts = append(opts, nats.RootCAs(cfg.CACert))
+			}
+		}
+
+		conn, err := nats.Connect(cfg.Address, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("nats connection: %w", err)
 		}
